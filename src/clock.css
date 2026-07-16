@@ -1,0 +1,361 @@
+:host {
+  --clock-on: rgb(74 255 105);
+  --clock-off: rgb(12 49 25 / 0.62);
+  --clock-glow-soft: rgb(55 255 95 / 0.42);
+  --clock-glow-strong: rgb(74 255 105 / 0.74);
+  --alarm-on: rgb(255 48 48);
+  --alarm-off: rgb(65 10 10 / 0.68);
+  --alarm-glow-soft: rgb(255 25 25 / 0.40);
+  --alarm-glow-strong: rgb(255 48 48 / 0.78);
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #010403;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.clock-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-areas:
+    "alarm"
+    "clock"
+    "date"
+    "temperature";
+  grid-template-rows: minmax(0, 17%) minmax(0, 1fr) min-content minmax(0, 19%);
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 48%, rgb(8 27 19) 0%, rgb(3 12 9) 58%, rgb(1 4 3) 100%);
+  transition: background 260ms ease;
+}
+
+.clock-screen.is-armed {
+  --clock-on: var(--alarm-on);
+  --clock-off: var(--alarm-off);
+  --clock-glow-soft: var(--alarm-glow-soft);
+  --clock-glow-strong: var(--alarm-glow-strong);
+  background:
+    radial-gradient(circle at 50% 48%, rgb(66 8 8) 0%, rgb(24 3 3) 58%, rgb(4 0 0) 100%);
+}
+
+.alarm-banner {
+  grid-area: alarm;
+  align-self: end;
+  justify-self: center;
+  min-height: 1.1em;
+  padding-bottom: 1.2vh;
+  color: var(--alarm-on);
+  font-size: clamp(18px, 4.4vw, 44px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.clock-screen.is-armed .alarm-banner {
+  visibility: visible;
+  animation: alarm-pulse 1.35s ease-in-out infinite;
+}
+
+.clock-holder {
+  grid-area: clock;
+  align-self: center;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(96vw, 1200px);
+  min-width: 0;
+  transform: scale(1);
+  transform-origin: center;
+  transition: transform 260ms ease;
+}
+
+.clock-screen.is-armed .clock-holder {
+  transform: scale(0.79);
+}
+
+.clock-date {
+  grid-area: date;
+  align-self: center;
+  justify-self: center;
+  color: rgb(255 255 255 / 0.92);
+  font-size: clamp(17px, 4vw, 38px);
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.clock-temperature {
+  grid-area: temperature;
+  align-self: start;
+  justify-self: center;
+  padding-top: 2vh;
+  color: rgb(90 235 205);
+  font-size: clamp(18px, 4vw, 36px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.clock-temperature.is-cold {
+  color: rgb(100 195 255);
+}
+
+.clock-temperature.is-hot {
+  color: rgb(255 145 55);
+}
+
+.clock-temperature.is-unavailable {
+  color: rgb(255 255 255 / 0.58);
+}
+
+.segment-display {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(18px, 0.22fr) repeat(2, minmax(0, 1fr));
+  align-items: center;
+  justify-content: center;
+  width: min(94vw, 1120px);
+  height: min(56vh, 480px);
+  column-gap: clamp(4px, 0.8vw, 14px);
+}
+
+seven-segment-digit,
+seven-segment-colon {
+  display: block;
+  min-width: 0;
+  height: 100%;
+}
+
+.digit-frame {
+  --thickness: clamp(11px, 2.2vmin, 28px);
+  --bevel: calc(var(--thickness) * 0.58);
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  filter: saturate(1.08);
+}
+
+.segment {
+  position: absolute;
+  display: block;
+  background: var(--clock-off);
+  opacity: 0.94;
+  transition:
+    background-color 100ms linear,
+    box-shadow 100ms linear,
+    opacity 100ms linear,
+    filter 100ms linear;
+}
+
+.segment.is-on {
+  background: var(--clock-on);
+  opacity: 1;
+  box-shadow:
+    0 0 2px var(--clock-on),
+    0 0 7px var(--clock-glow-strong),
+    0 0 16px var(--clock-glow-soft),
+    0 0 34px color-mix(in srgb, var(--clock-on) 25%, transparent);
+  filter: brightness(1.08);
+}
+
+.segment-a,
+.segment-d,
+.segment-g {
+  left: 13%;
+  width: 74%;
+  height: var(--thickness);
+  clip-path: polygon(
+    var(--bevel) 0,
+    calc(100% - var(--bevel)) 0,
+    100% 50%,
+    calc(100% - var(--bevel)) 100%,
+    var(--bevel) 100%,
+    0 50%
+  );
+}
+
+.segment-a { top: 3%; }
+.segment-g { top: 50%; transform: translateY(-50%); }
+.segment-d { bottom: 3%; }
+
+.segment-b,
+.segment-c,
+.segment-e,
+.segment-f {
+  width: var(--thickness);
+  height: 40%;
+  clip-path: polygon(
+    50% 0,
+    100% var(--bevel),
+    100% calc(100% - var(--bevel)),
+    50% 100%,
+    0 calc(100% - var(--bevel)),
+    0 var(--bevel)
+  );
+}
+
+.segment-f { left: 4%; top: 8%; }
+.segment-b { right: 4%; top: 8%; }
+.segment-e { left: 4%; bottom: 8%; }
+.segment-c { right: 4%; bottom: 8%; }
+
+.colon-frame {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+  width: 100%;
+  height: 100%;
+  padding-block: 24%;
+  animation: colon-blink 1s steps(1, end) infinite;
+}
+
+.colon-dot {
+  display: block;
+  width: clamp(12px, 2.6vmin, 30px);
+  aspect-ratio: 1;
+  border-radius: 22%;
+  background: var(--clock-on);
+  box-shadow:
+    0 0 2px var(--clock-on),
+    0 0 8px var(--clock-glow-strong),
+    0 0 18px var(--clock-glow-soft);
+}
+
+.clock-error {
+  position: absolute;
+  left: 50%;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  color: rgb(255 205 95);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  visibility: hidden;
+}
+
+.clock-error.is-visible {
+  visibility: visible;
+}
+
+@keyframes colon-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.12; }
+}
+
+@keyframes alarm-pulse {
+  0%, 100% {
+    opacity: 1;
+    text-shadow:
+      0 0 6px rgb(255 48 48 / 0.86),
+      0 0 18px rgb(255 20 20 / 0.52);
+  }
+  50% {
+    opacity: 0.58;
+    text-shadow:
+      0 0 3px rgb(255 48 48 / 0.55),
+      0 0 9px rgb(255 20 20 / 0.28);
+  }
+}
+
+@media (orientation: portrait) {
+  .clock-screen {
+    grid-template-rows: minmax(0, 20%) minmax(0, 1fr) min-content minmax(0, 22%);
+  }
+
+  .clock-holder {
+    width: 98vw;
+  }
+
+  .segment-display {
+    width: 96vw;
+    height: min(39vh, 410px);
+    column-gap: clamp(2px, 0.5vw, 7px);
+  }
+
+  .digit-frame {
+    --thickness: clamp(8px, 2.2vmin, 20px);
+  }
+
+  .clock-date {
+    font-size: clamp(18px, 5.2vw, 34px);
+  }
+
+  .clock-temperature {
+    font-size: clamp(18px, 5vw, 32px);
+  }
+}
+
+@media (max-height: 430px) and (orientation: landscape) {
+  .clock-screen {
+    grid-template-rows: minmax(0, 14%) minmax(0, 1fr) min-content minmax(0, 17%);
+  }
+
+  .alarm-banner {
+    padding-bottom: 0;
+    font-size: clamp(16px, 4vw, 31px);
+  }
+
+  .segment-display {
+    height: min(55vh, 270px);
+  }
+
+  .clock-date {
+    font-size: clamp(15px, 3.5vw, 26px);
+  }
+
+  .clock-temperature {
+    padding-top: 1.1vh;
+    font-size: clamp(15px, 3.4vw, 25px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clock-screen,
+  .clock-holder,
+  .segment {
+    transition: none;
+  }
+
+  .alarm-banner,
+  .colon-frame {
+    animation: none !important;
+    opacity: 1;
+  }
+}
