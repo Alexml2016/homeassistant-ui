@@ -1,4 +1,4 @@
-import "./segments.js";
+import { SegmentRenderer } from "./segments.js";
 import { AlarmState } from "./alarm.js";
 import { WeatherState } from "./weather.js";
 import { ClockController } from "./clock.js";
@@ -14,6 +14,7 @@ class ClockPanel extends HTMLElement {
     this._hass = null;
     this._config = DEFAULT_CONFIG;
     this._clock = null;
+    this._segmentRenderer = null;
     this._alarmState = new AlarmState(this._config);
     this._weatherState = new WeatherState(this._config);
     this._lastAlarmSignature = "";
@@ -23,13 +24,7 @@ class ClockPanel extends HTMLElement {
   }
 
   connectedCallback() {
-    if (!this._clock) {
-      this._clock = new ClockController({
-        display: this._display,
-        dateElement: this._date,
-        locale: this._config.locale,
-      });
-    }
+    this._ensureClock();
     this._clock.start();
     this._updateFromHass();
   }
@@ -61,6 +56,21 @@ class ClockPanel extends HTMLElement {
     // Reserved by the Home Assistant custom-panel API.
   }
 
+  _ensureClock() {
+    if (!this._segmentRenderer) {
+      this._segmentRenderer = new SegmentRenderer(this._displayContainer);
+      this._segmentRenderer.create();
+    }
+
+    if (!this._clock) {
+      this._clock = new ClockController({
+        display: this._segmentRenderer,
+        dateElement: this._date,
+        locale: this._config.locale,
+      });
+    }
+  }
+
   _applyConfig(customConfig) {
     this._config = mergeConfig(DEFAULT_CONFIG, customConfig);
     this._alarmState = new AlarmState(this._config);
@@ -73,7 +83,7 @@ class ClockPanel extends HTMLElement {
     if (this._clock) {
       this._clock.stop();
       this._clock = new ClockController({
-        display: this._display,
+        display: this._segmentRenderer,
         dateElement: this._date,
         locale: this._config.locale,
       });
@@ -95,7 +105,7 @@ class ClockPanel extends HTMLElement {
     screen.innerHTML = `
       <div class="alarm-banner" role="status" aria-live="polite"></div>
       <div class="clock-holder">
-        <seven-segment-display></seven-segment-display>
+        <div class="clock-display" aria-label="Цифровые часы"></div>
       </div>
       <div class="clock-date" aria-label="Текущая дата">—</div>
       <div class="clock-temperature is-unavailable" aria-live="polite">На улице: —</div>
@@ -106,7 +116,7 @@ class ClockPanel extends HTMLElement {
 
     this._screen = screen;
     this._alarmBanner = screen.querySelector(".alarm-banner");
-    this._display = screen.querySelector("seven-segment-display");
+    this._displayContainer = screen.querySelector(".clock-display");
     this._date = screen.querySelector(".clock-date");
     this._temperature = screen.querySelector(".clock-temperature");
     this._error = screen.querySelector(".clock-error");
