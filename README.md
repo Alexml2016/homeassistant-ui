@@ -8,7 +8,7 @@
 
 ## Alarm mode
 
-![Alarm](images/alarm.jpg)
+![Alarm](images/alarm.jpeg)
 
 ## Возможности
 
