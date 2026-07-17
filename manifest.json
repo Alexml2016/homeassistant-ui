@@ -1,7 +1,7 @@
 {
   "name": "Home Assistant Clock Panel",
-  "version": "2.0.0",
-  "description": "Fullscreen DOM-rendered seven-segment clock panel for Home Assistant",
+  "version": "2.0.1",
+  "description": "Fullscreen DOM-rendered seven-segment clock panel optimized for iPhone landscape mode",
   "entrypoint": "src/clock-panel.js",
   "home_assistant": {
     "panel_name": "clock-panel",
