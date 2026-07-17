@@ -13,142 +13,145 @@ const SEGMENTS = Object.freeze({
   " ": [],
 });
 
+const SEGMENT_NAMES = Object.freeze(["a", "b", "c", "d", "e", "f", "g"]);
+const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
+
+function createElement(tagName, className, attributes = {}) {
+  const element = document.createElement(tagName);
+  element.className = className;
+
+  for (const [name, value] of Object.entries(attributes)) {
+    element.setAttribute(name, value);
+  }
+
+  return element;
+}
+
 function createSegment(name) {
-  const segment = document.createElement("span");
-  segment.className = `segment segment-${name}`;
+  const segment = createElement("span", `segment segment-${name}`, {
+    "aria-hidden": "true",
+  });
   segment.dataset.segment = name;
-  segment.setAttribute("aria-hidden", "true");
   return segment;
 }
 
-export class SevenSegmentDigit extends HTMLElement {
-  constructor() {
-    super();
-    this._value = " ";
-    this.attachShadow({ mode: "open" });
+function createDigit() {
+  const frame = createElement("div", "digit-frame", {
+    "aria-hidden": "true",
+  });
 
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = new URL("./clock.css", import.meta.url).href;
+  for (const name of SEGMENT_NAMES) {
+    frame.append(createSegment(name));
+  }
 
-    const frame = document.createElement("span");
-    frame.className = "digit-frame";
-    for (const name of ["a", "b", "c", "d", "e", "f", "g"]) {
-      frame.append(createSegment(name));
-    }
-
-    this.shadowRoot.append(link, frame);
-    this._segments = new Map(
-      [...frame.querySelectorAll(".segment")].map((element) => [
-        element.dataset.segment,
-        element,
+  return {
+    element: frame,
+    segments: new Map(
+      [...frame.querySelectorAll(".segment")].map((segment) => [
+        segment.dataset.segment,
+        segment,
       ]),
-    );
-  }
-
-  static get observedAttributes() {
-    return ["value"];
-  }
-
-  attributeChangedCallback(name, oldValue, newValue) {
-    if (name === "value" && oldValue !== newValue) {
-      this.value = newValue;
-    }
-  }
-
-  get value() {
-    return this._value;
-  }
-
-  set value(value) {
-    const normalized = String(value ?? " ").slice(0, 1);
-    this._value = Object.hasOwn(SEGMENTS, normalized) ? normalized : " ";
-    this.setAttribute("aria-label", this._value.trim() || "пусто");
-    this._render();
-  }
-
-  _render() {
-    const active = new Set(SEGMENTS[this._value] ?? []);
-    for (const [name, element] of this._segments) {
-      element.classList.toggle("is-on", active.has(name));
-    }
-  }
+    ),
+  };
 }
 
-export class SevenSegmentColon extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
+function createColon() {
+  const frame = createElement("div", "colon-frame", {
+    "aria-hidden": "true",
+  });
 
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = new URL("./clock.css", import.meta.url).href;
+  frame.append(
+    createElement("span", "colon-dot colon-dot-top"),
+    createElement("span", "colon-dot colon-dot-bottom"),
+  );
 
-    const frame = document.createElement("span");
-    frame.className = "colon-frame";
-    frame.innerHTML = `
-      <span class="colon-dot colon-dot-top" aria-hidden="true"></span>
-      <span class="colon-dot colon-dot-bottom" aria-hidden="true"></span>
-    `;
-
-    this.shadowRoot.append(link, frame);
-    this.setAttribute("aria-hidden", "true");
-  }
+  return frame;
 }
 
-export class SevenSegmentDisplay extends HTMLElement {
-  constructor() {
-    super();
+/**
+ * Seven-segment clock renderer that uses only standard DOM elements.
+ *
+ * This deliberately avoids nested custom elements because Home Assistant's
+ * scoped custom element registry can reject their construction inside a
+ * panel_custom component.
+ */
+export class SegmentRenderer {
+  constructor(container) {
+    if (!(container instanceof Element)) {
+      throw new TypeError("SegmentRenderer requires a DOM container element");
+    }
+
+    this._container = container;
+    this._root = null;
+    this._digits = [];
     this._value = "00:00";
-    this.attachShadow({ mode: "open" });
+  }
 
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = new URL("./clock.css", import.meta.url).href;
+  create() {
+    if (this._root) return this._root;
 
-    const display = document.createElement("div");
-    display.className = "segment-display";
-    display.setAttribute("role", "timer");
-    display.setAttribute("aria-live", "off");
+    const display = createElement("div", "segment-display", {
+      role: "timer",
+      "aria-live": "off",
+      "aria-label": this._value,
+    });
 
-    this._digits = [0, 1, 2, 3].map(() =>
-      document.createElement("seven-segment-digit"),
-    );
-    this._colon = document.createElement("seven-segment-colon");
+    this._digits = [0, 1, 2, 3].map(() => createDigit());
+    const colon = createColon();
 
     display.append(
-      this._digits[0],
-      this._digits[1],
-      this._colon,
-      this._digits[2],
-      this._digits[3],
+      this._digits[0].element,
+      this._digits[1].element,
+      colon,
+      this._digits[2].element,
+      this._digits[3].element,
     );
-    this.shadowRoot.append(link, display);
-    this._display = display;
+
+    this._container.replaceChildren(display);
+    this._root = display;
+    this.setTime(this._value);
+    return display;
   }
 
-  set value(value) {
-    const match = String(value ?? "").match(/^(\d{2}):(\d{2})$/);
-    if (!match) return;
+  setTime(value) {
+    const match = String(value ?? "").match(TIME_PATTERN);
+    if (!match) return false;
+
     this._value = `${match[1]}:${match[2]}`;
     const characters = `${match[1]}${match[2]}`;
+
+    if (!this._root) this.create();
+
     this._digits.forEach((digit, index) => {
-      digit.value = characters[index];
+      this._renderDigit(digit, characters[index]);
     });
-    this._display.setAttribute("aria-label", this._value);
+
+    this._root.setAttribute("aria-label", this._value);
+    return true;
   }
 
   get value() {
     return this._value;
   }
+
+  get element() {
+    return this._root;
+  }
+
+  destroy() {
+    this._root?.remove();
+    this._root = null;
+    this._digits = [];
+  }
+
+  _renderDigit(digit, value) {
+    const normalized = Object.hasOwn(SEGMENTS, value) ? value : " ";
+    const activeSegments = new Set(SEGMENTS[normalized]);
+
+    for (const [name, segment] of digit.segments) {
+      segment.classList.toggle("is-on", activeSegments.has(name));
+    }
+  }
 }
 
-if (!customElements.get("seven-segment-digit")) {
-  customElements.define("seven-segment-digit", SevenSegmentDigit);
-}
-if (!customElements.get("seven-segment-colon")) {
-  customElements.define("seven-segment-colon", SevenSegmentColon);
-}
-if (!customElements.get("seven-segment-display")) {
-  customElements.define("seven-segment-display", SevenSegmentDisplay);
-}
+export { SEGMENTS };
