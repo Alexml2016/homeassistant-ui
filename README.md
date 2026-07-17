@@ -2,6 +2,14 @@
 
 Полноэкранная пользовательская панель Home Assistant для iPhone/iPad.
 
+## Landscape mode
+
+![Landscape](images/iPhone.png)
+
+## Alarm mode
+
+![Alarm](images/alarm.jpg)
+
 ## Возможности
 
 - время в формате `HH:MM`;
