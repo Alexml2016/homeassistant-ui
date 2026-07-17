@@ -5,7 +5,9 @@ import { formatDate, pad2 } from "./utils.js";
  */
 export class ClockController {
   constructor({ display, dateElement, locale = "ru-RU" }) {
-    if (!display) throw new Error("ClockController: display is required");
+    if (!display || typeof display.setTime !== "function") {
+      throw new Error("ClockController: display with setTime() is required");
+    }
     if (!dateElement) throw new Error("ClockController: dateElement is required");
 
     this.display = display;
@@ -32,8 +34,10 @@ export class ClockController {
   update(now = new Date()) {
     const time = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
     if (time !== this._lastTime) {
+      if (!this.display.setTime(time)) {
+        throw new Error(`ClockController: invalid time value ${time}`);
+      }
       this._lastTime = time;
-      this.display.value = time;
     }
 
     const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
