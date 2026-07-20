@@ -141,7 +141,6 @@ class ClockPanel extends HTMLElement {
     this._error = screen.querySelector(".clock-error");
     this._alarmBanner.textContent = this._config.alarmText;
     this._refreshButton.addEventListener("click", () => window.location.reload());
-    this._applyDisplaySettings();
   }
 
   _updateFromHass() {

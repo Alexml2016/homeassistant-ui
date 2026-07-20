@@ -1,6 +1,6 @@
 {
   "name": "Home Assistant Clock Panel",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Fullscreen DOM-rendered seven-segment clock panel with configurable display geometry and a refresh control",
   "entrypoint": "src/clock-panel.js",
   "home_assistant": {
