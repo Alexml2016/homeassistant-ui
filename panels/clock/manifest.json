@@ -1,0 +1,14 @@
+{
+  "name": "Home Assistant Clock Panel",
+  "version": "2.0.2",
+  "description": "Fullscreen DOM-rendered seven-segment clock panel with narrower digits and increased hour-minute spacing for iPhone landscape mode",
+  "entrypoint": "src/clock-panel.js",
+  "home_assistant": {
+    "panel_name": "clock-panel",
+    "url_path": "clock-screen"
+  },
+  "entities": {
+    "alarm": "binary_sensor.alarm_gateway_alarm_relay_state",
+    "weather": "weather.home_assistant"
+  }
+}
