@@ -5,6 +5,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   armedState: "on",
   alarmText: "ОХРАНА ВКЛЮЧЕНА",
   temperaturePrefix: "На улице",
+  digitWidth: "0.9fr",
+  hourMinuteGap: "42px",
+  segmentThickness: "clamp(16px, 3.1vmin, 34px)",
 });
 
 export function pad2(value) {

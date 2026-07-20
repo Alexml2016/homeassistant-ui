@@ -7,6 +7,9 @@
   --alarm-off: rgb(65 10 10 / 0.68);
   --alarm-glow-soft: rgb(255 25 25 / 0.40);
   --alarm-glow-strong: rgb(255 48 48 / 0.78);
+  --digit-width: 0.9fr;
+  --hour-minute-gap: 42px;
+  --segment-thickness: clamp(16px, 3.1vmin, 34px);
   position: fixed;
   inset: 0;
   display: block;
@@ -144,7 +147,10 @@
 
 .segment-display {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 0.9fr)) minmax(34px, 0.55fr) repeat(2, minmax(0, 0.9fr));
+  grid-template-columns:
+    repeat(2, minmax(0, var(--digit-width)))
+    minmax(var(--hour-minute-gap), 0.55fr)
+    repeat(2, minmax(0, var(--digit-width)));
   align-items: center;
   justify-content: center;
   width: min(94vw, 1120px);
@@ -160,7 +166,7 @@
 }
 
 .digit-frame {
-  --thickness: clamp(11px, 2.2vmin, 28px);
+  --thickness: var(--segment-thickness);
   --bevel: calc(var(--thickness) * 0.58);
   position: relative;
   width: 100%;
@@ -271,6 +277,34 @@
   visibility: visible;
 }
 
+.refresh-button {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 2;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 0.30);
+  color: rgb(255 255 255 / 0.74);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(6px);
+}
+
+.refresh-button:active {
+  background: rgb(255 255 255 / 0.16);
+  color: white;
+}
+
+.refresh-button:focus-visible {
+  outline: 2px solid var(--clock-on);
+  outline-offset: 2px;
+}
+
 @keyframes colon-blink {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0.12; }
@@ -297,13 +331,8 @@
   }
 
   .segment-display {
-    grid-template-columns: repeat(2, minmax(0, 0.9fr)) minmax(42px, 0.62fr) repeat(2, minmax(0, 0.9fr));
     width: min(84vw, 860px);
     column-gap: clamp(5px, 0.85vw, 14px);
-  }
-
-  .digit-frame {
-    --thickness: clamp(16px, 3.1vmin, 34px);
   }
 
   .colon-dot {
@@ -327,7 +356,7 @@
   }
 
   .digit-frame {
-    --thickness: clamp(8px, 2.2vmin, 20px);
+    --thickness: min(var(--segment-thickness), 20px);
   }
 
   .clock-date {
@@ -359,14 +388,9 @@
   }
 
   .segment-display {
-    grid-template-columns: repeat(2, minmax(0, 0.9fr)) minmax(40px, 0.64fr) repeat(2, minmax(0, 0.9fr));
     width: min(82vw, 740px);
     height: min(52vh, 250px);
     column-gap: clamp(4px, 0.75vw, 12px);
-  }
-
-  .digit-frame {
-    --thickness: clamp(14px, 3.2vmin, 30px);
   }
 
   .clock-date {

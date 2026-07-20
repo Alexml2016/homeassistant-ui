@@ -75,6 +75,7 @@ class ClockPanel extends HTMLElement {
     this._config = mergeConfig(DEFAULT_CONFIG, customConfig);
     this._alarmState = new AlarmState(this._config);
     this._weatherState = new WeatherState(this._config);
+    this._applyDisplaySettings();
 
     if (this._alarmBanner) {
       this._alarmBanner.textContent = this._config.alarmText;
@@ -95,6 +96,22 @@ class ClockPanel extends HTMLElement {
     this._updateFromHass();
   }
 
+  _applyDisplaySettings() {
+    const settings = {
+      "--digit-width": this._config.digitWidth,
+      "--hour-minute-gap": this._config.hourMinuteGap,
+      "--segment-thickness": this._config.segmentThickness,
+    };
+
+    for (const [property, value] of Object.entries(settings)) {
+      if (value === null || value === undefined || value === "") {
+        this.style.removeProperty(property);
+      } else {
+        this.style.setProperty(property, String(value));
+      }
+    }
+  }
+
   _renderShell() {
     const styleLink = document.createElement("link");
     styleLink.rel = "stylesheet";
@@ -109,6 +126,7 @@ class ClockPanel extends HTMLElement {
       </div>
       <div class="clock-date" aria-label="Текущая дата">—</div>
       <div class="clock-temperature is-unavailable" aria-live="polite">На улице: —</div>
+      <button class="refresh-button" type="button" aria-label="Обновить панель">Обновить</button>
       <div class="clock-error" role="status" aria-live="polite"></div>
     `;
 
@@ -119,8 +137,11 @@ class ClockPanel extends HTMLElement {
     this._displayContainer = screen.querySelector(".clock-display");
     this._date = screen.querySelector(".clock-date");
     this._temperature = screen.querySelector(".clock-temperature");
+    this._refreshButton = screen.querySelector(".refresh-button");
     this._error = screen.querySelector(".clock-error");
     this._alarmBanner.textContent = this._config.alarmText;
+    this._refreshButton.addEventListener("click", () => window.location.reload());
+    this._applyDisplaySettings();
   }
 
   _updateFromHass() {
