@@ -47,19 +47,19 @@ clock-panel/
 Скопируйте каталог репозитория в Home Assistant:
 
 ```text
-/config/www/clock-panel/
+/config/www/homeassistant-ui/panels/clock/
 ```
 
 После копирования основной модуль должен находиться здесь:
 
 ```text
-/config/www/clock-panel/src/clock-panel.js
+/config/www/homeassistant-ui/panels/clock/src/clock-panel.js
 ```
 
 Home Assistant опубликует его по адресу:
 
 ```text
-/local/clock-panel/src/clock-panel.js
+/local/homeassistant-ui/panels/clock/src/clock-panel.js
 ```
 
 ### 2. Зарегистрировать панель
@@ -72,7 +72,7 @@ panel_custom:
     url_path: clock-screen
     sidebar_title: Часы
     sidebar_icon: mdi:clock-digital
-    module_url: /local/clock-panel/src/clock-panel.js
+    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js
     require_admin: false
     config:
       alarmEntity: binary_sensor.alarm_gateway_alarm_relay_state
@@ -146,7 +146,7 @@ armedState: "off"
 3. при необходимости измените URL модуля, добавив версию:
 
 ```yaml
-module_url: /local/clock-panel/src/clock-panel.js?v=2
+module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2
 ```
 
 ## Примечание о шрифте

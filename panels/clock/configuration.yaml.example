@@ -3,7 +3,7 @@ panel_custom:
     url_path: clock-screen
     sidebar_title: Часы
     sidebar_icon: mdi:clock-digital
-    module_url: /local/clock-panel/src/clock-panel.js
+    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js
     require_admin: false
     config:
       alarmEntity: binary_sensor.alarm_gateway_alarm_relay_state
