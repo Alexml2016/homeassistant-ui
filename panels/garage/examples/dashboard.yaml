@@ -1,0 +1,32 @@
+# Подключите JavaScript как Lovelace Resource:
+# URL: /local/homeassistant-ui/panels/garage/src/garage-panel.js?v=0.1.0
+# Тип: JavaScript Module
+
+views:
+  - title: Гараж
+    path: garage
+    panel: true
+    cards:
+      - type: custom:garage-panel
+        title: Гараж и ворота
+
+        # Откатные ворота во дворе
+        courtyard_name: Дворовые ворота
+        courtyard_cover: cover.courtyard_gates
+        courtyard_open_sensor: binary_sensor.courtyard_gate_open_state
+        courtyard_closed_sensor: binary_sensor.courtyard_gate_close_state
+
+        # Подъёмные ворота гаража
+        garage_name: Гаражные ворота
+        garage_cover: cover.garage
+        garage_open_sensor: binary_sensor.garage_open_state
+        garage_closed_sensor: binary_sensor.garage_close_state
+
+        # Дополнительные сущности
+        motion_name: Движение в гараже
+        motion_sensor: binary_sensor.garage_presense_detector
+        temperature_sensor: sensor.garage_temperature
+
+        # Дополнительные настройки
+        show_activity: true
+        confirm_open: false
