@@ -1,22 +1,23 @@
-const PANEL_VERSION = "0.1.0";
+const PANEL_VERSION = "0.2.0";
 
 const DEFAULTS = {
   title: "Гараж и ворота",
   courtyard_name: "Дворовые ворота",
   garage_name: "Гаражные ворота",
+  wicket_name: "Калитка",
   motion_name: "Движение в гараже",
   show_activity: true,
   confirm_open: false,
 };
 
-const STATE_COLORS = {
-  closed: "#166534",
-  open: "#b91c1c",
-  opening: "#b45309",
-  closing: "#b45309",
-  moving: "#b45309",
-  error: "#7e22ce",
-  unavailable: "#475569",
+const STATE_STYLES = {
+  closed: { color: "#4ade80", background: "#14532d", glow: "rgba(34,197,94,.24)" },
+  open: { color: "#f87171", background: "#7f1d1d", glow: "rgba(239,68,68,.24)" },
+  opening: { color: "#fbbf24", background: "#78350f", glow: "rgba(245,158,11,.26)" },
+  closing: { color: "#fbbf24", background: "#78350f", glow: "rgba(245,158,11,.26)" },
+  moving: { color: "#fbbf24", background: "#78350f", glow: "rgba(245,158,11,.26)" },
+  error: { color: "#c084fc", background: "#581c87", glow: "rgba(168,85,247,.25)" },
+  unavailable: { color: "#94a3b8", background: "#334155", glow: "rgba(100,116,139,.2)" },
 };
 
 const STATE_LABELS = {
@@ -44,21 +45,20 @@ class GaragePanel extends HTMLElement {
     this._rendered = false;
   }
 
-  static getConfigElement() {
-    return document.createElement("garage-panel-editor");
-  }
-
   static getStubConfig() {
     return {
       type: "custom:garage-panel",
       courtyard_cover: "cover.courtyard_gate",
       courtyard_open_sensor: "binary_sensor.courtyard_gate_open",
       courtyard_closed_sensor: "binary_sensor.courtyard_gate_closed",
+      courtyard_temperature_sensor: "sensor.outdoor_temperature",
       garage_cover: "cover.garage_gate",
       garage_open_sensor: "binary_sensor.garage_gate_open",
       garage_closed_sensor: "binary_sensor.garage_gate_closed",
+      garage_temperature_sensor: "sensor.garage_temperature",
+      wicket_sensor: "binary_sensor.wicket",
+      wicket_entity: "button.open_wicket",
       motion_sensor: "binary_sensor.garage_motion",
-      temperature_sensor: "sensor.garage_temperature",
     };
   }
 
@@ -91,7 +91,7 @@ class GaragePanel extends HTMLElement {
   }
 
   getCardSize() {
-    return 8;
+    return 6;
   }
 
   _render() {
@@ -106,25 +106,34 @@ class GaragePanel extends HTMLElement {
               <div class="eyebrow">HOME ASSISTANT</div>
               <h1>${this._escape(this._config.title)}</h1>
             </div>
-            <div class="header-status">
-              <div class="temperature" id="temperature">—</div>
-              <div class="online"><span class="online-dot"></span>ESPHome</div>
-            </div>
+            <div class="online"><span class="online-dot"></span>ESPHome</div>
           </header>
 
           <main class="gate-grid">
-            ${this._gateTemplate("courtyard", this._config.courtyard_name, "Откатные ворота")}
-            ${this._gateTemplate("garage", this._config.garage_name, "Подъёмные ворота")}
+            ${this._gateTemplate("courtyard", this._config.courtyard_name, "Откатные ворота", "На улице")}
+            ${this._gateTemplate("garage", this._config.garage_name, "Подъёмные ворота", "В гараже")}
           </main>
 
-          <section class="motion-card" id="motion-card">
-            <div class="motion-icon"><ha-icon icon="mdi:motion-sensor"></ha-icon></div>
-            <div class="motion-copy">
-              <div class="motion-title">${this._escape(this._config.motion_name)}</div>
-              <div class="motion-state" id="motion-state">Нет данных</div>
-            </div>
-            <div class="pulse" id="motion-pulse"></div>
-          </section>
+          <div class="status-grid">
+            <button class="wicket-card" id="wicket-card" type="button">
+              <div class="status-icon"><ha-icon icon="mdi:door"></ha-icon></div>
+              <div class="status-copy">
+                <div class="status-title">${this._escape(this._config.wicket_name)}</div>
+                <div class="status-state" id="wicket-state">Нет данных</div>
+                <div class="status-hint" id="wicket-hint">Нажмите, чтобы открыть</div>
+              </div>
+              <ha-icon class="status-action" icon="mdi:door-open"></ha-icon>
+            </button>
+
+            <section class="motion-card" id="motion-card">
+              <div class="status-icon"><ha-icon icon="mdi:motion-sensor"></ha-icon></div>
+              <div class="status-copy">
+                <div class="status-title">${this._escape(this._config.motion_name)}</div>
+                <div class="status-state" id="motion-state">Нет данных</div>
+              </div>
+              <div class="pulse" id="motion-pulse"></div>
+            </section>
+          </div>
 
           <section class="activity" id="activity-section">
             <div class="section-title">Последние изменения</div>
@@ -138,11 +147,13 @@ class GaragePanel extends HTMLElement {
       .addEventListener("click", () => this._toggle("courtyard"));
     this.shadowRoot.getElementById("garage-card")
       .addEventListener("click", () => this._toggle("garage"));
+    this.shadowRoot.getElementById("wicket-card")
+      .addEventListener("click", () => this._openWicket());
 
     this._rendered = true;
   }
 
-  _gateTemplate(kind, title, subtitle) {
+  _gateTemplate(kind, title, subtitle, temperatureLabel) {
     return `
       <button class="gate-card" id="${kind}-card" type="button" aria-label="${this._escape(title)}">
         <div class="gate-topline">
@@ -150,13 +161,21 @@ class GaragePanel extends HTMLElement {
             <div class="gate-title">${this._escape(title)}</div>
             <div class="gate-subtitle">${subtitle}</div>
           </div>
-          <ha-icon class="gate-action" icon="mdi:gesture-tap-button"></ha-icon>
+          <div class="gate-meta">
+            <div class="gate-temperature-label">${temperatureLabel}</div>
+            <div class="gate-temperature" id="${kind}-temperature">—</div>
+          </div>
         </div>
         <div class="gate-visual ${kind}" id="${kind}-visual">
           ${kind === "courtyard" ? this._courtyardSvg() : this._garageSvg()}
         </div>
-        <div class="gate-state" id="${kind}-state">—</div>
-        <div class="gate-hint" id="${kind}-hint">Нажмите для управления</div>
+        <div class="gate-bottomline">
+          <div>
+            <div class="gate-state" id="${kind}-state">—</div>
+            <div class="gate-hint" id="${kind}-hint">Нажмите для управления</div>
+          </div>
+          <ha-icon class="gate-action" icon="mdi:gesture-tap-button"></ha-icon>
+        </div>
       </button>
     `;
   }
@@ -169,9 +188,11 @@ class GaragePanel extends HTMLElement {
 
     this._updateGate("courtyard", courtyard, STATE_LABELS);
     this._updateGate("garage", garage, GARAGE_STATE_LABELS);
-    this._updateTemperature();
+    this._updateTemperature("courtyard", this._config.courtyard_temperature_sensor || this._config.outdoor_temperature_sensor);
+    this._updateTemperature("garage", this._config.garage_temperature_sensor || this._config.temperature_sensor);
+    const wicket = this._updateWicket();
     this._updateMotion();
-    this._updateActivity(courtyard, garage);
+    this._updateActivity(courtyard, garage, wicket);
   }
 
   _resolveGateState(kind) {
@@ -189,7 +210,6 @@ class GaragePanel extends HTMLElement {
     if (isOpen && isClosed) return { key: "error", cover, openSensor, closedSensor };
     if (isOpen) return { key: "open", cover, openSensor, closedSensor };
     if (isClosed) return { key: "closed", cover, openSensor, closedSensor };
-
     if (cover.state === "opening") return { key: "opening", cover, openSensor, closedSensor };
     if (cover.state === "closing") return { key: "closing", cover, openSensor, closedSensor };
     return { key: "moving", cover, openSensor, closedSensor };
@@ -200,9 +220,12 @@ class GaragePanel extends HTMLElement {
     const state = this.shadowRoot.getElementById(`${kind}-state`);
     const hint = this.shadowRoot.getElementById(`${kind}-hint`);
     const visual = this.shadowRoot.getElementById(`${kind}-visual`);
+    const style = STATE_STYLES[data.key] || STATE_STYLES.unavailable;
 
     card.dataset.state = data.key;
-    card.style.setProperty("--state-color", STATE_COLORS[data.key]);
+    card.style.setProperty("--state-color", style.color);
+    card.style.setProperty("--state-bg", style.background);
+    card.style.setProperty("--state-glow", style.glow);
     state.textContent = labels[data.key] || STATE_LABELS[data.key];
     visual.dataset.state = data.key;
 
@@ -219,15 +242,44 @@ class GaragePanel extends HTMLElement {
     card.disabled = ["error", "unavailable"].includes(data.key);
   }
 
-  _updateTemperature() {
-    const el = this.shadowRoot.getElementById("temperature");
-    const entity = this._entity(this._config.temperature_sensor);
-    if (!entity || ["unknown", "unavailable"].includes(entity.state)) {
-      el.textContent = "—";
-      return;
-    }
+  _updateTemperature(kind, entityId) {
+    const el = this.shadowRoot.getElementById(`${kind}-temperature`);
+    el.textContent = this._formatTemperature(this._entity(entityId));
+  }
+
+  _formatTemperature(entity) {
+    if (!entity || ["unknown", "unavailable"].includes(entity.state)) return "—";
+    const value = Number.parseFloat(entity.state);
+    if (!Number.isFinite(value)) return "—";
     const unit = entity.attributes.unit_of_measurement || "°C";
-    el.textContent = `${entity.state} ${unit}`;
+    const locale = this._hass?.locale?.language || "ru-RU";
+    return `${value.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
+  }
+
+  _updateWicket() {
+    const card = this.shadowRoot.getElementById("wicket-card");
+    const stateEl = this.shadowRoot.getElementById("wicket-state");
+    const hint = this.shadowRoot.getElementById("wicket-hint");
+    const entity = this._entity(this._config.wicket_sensor);
+    const configured = Boolean(this._config.wicket_sensor && (this._config.wicket_entity || this._config.wicket_service));
+
+    card.hidden = !configured;
+    if (!configured) return null;
+
+    const unavailable = !entity || ["unknown", "unavailable"].includes(entity.state);
+    const open = !unavailable && ["on", "open", "opening", "unlocked"].includes(entity.state);
+    const key = unavailable ? "unavailable" : open ? "open" : "closed";
+    const style = STATE_STYLES[key];
+
+    card.dataset.state = key;
+    card.style.setProperty("--state-color", style.color);
+    card.style.setProperty("--state-bg", style.background);
+    card.style.setProperty("--state-glow", style.glow);
+    stateEl.textContent = unavailable ? "НЕДОСТУПНА" : open ? "ОТКРЫТА" : "ЗАКРЫТА";
+    hint.textContent = open ? "Калитка уже открыта" : "Нажмите, чтобы открыть";
+    card.disabled = unavailable || open;
+
+    return { key, entity };
   }
 
   _updateMotion() {
@@ -249,7 +301,7 @@ class GaragePanel extends HTMLElement {
     state.textContent = unavailable ? "Нет данных" : active ? "Обнаружено движение" : "Движения нет";
   }
 
-  _updateActivity(courtyard, garage) {
+  _updateActivity(courtyard, garage, wicket) {
     const section = this.shadowRoot.getElementById("activity-section");
     if (!this._config.show_activity) {
       section.hidden = true;
@@ -261,6 +313,15 @@ class GaragePanel extends HTMLElement {
       this._activityItem(this._config.courtyard_name, courtyard, "mdi:gate"),
       this._activityItem(this._config.garage_name, garage, "mdi:garage"),
     ];
+
+    if (wicket?.entity) {
+      items.push({
+        title: this._config.wicket_name,
+        text: wicket.key === "open" ? "ОТКРЫТА" : wicket.key === "closed" ? "ЗАКРЫТА" : "НЕДОСТУПНА",
+        icon: "mdi:door",
+        changed: wicket.entity.last_changed,
+      });
+    }
 
     const motion = this._entity(this._config.motion_sensor);
     if (motion) {
@@ -297,16 +358,66 @@ class GaragePanel extends HTMLElement {
     const gate = this._resolveGateState(kind);
 
     if (this._config.confirm_open && gate.key === "closed") {
-      const ok = window.confirm(`Открыть: ${kind === "courtyard" ? this._config.courtyard_name : this._config.garage_name}?`);
-      if (!ok) return;
+      const name = kind === "courtyard" ? this._config.courtyard_name : this._config.garage_name;
+      if (!window.confirm(`Открыть: ${name}?`)) return;
     }
 
     try {
       await this._hass.callService("cover", "toggle", { entity_id: entityId });
     } catch (error) {
       console.error("garage-panel: cover.toggle failed", error);
-      this._fireEvent("hass-notification", { message: `Не удалось выполнить команду для ${entityId}` });
+      this._notify(`Не удалось выполнить команду для ${entityId}`);
     }
+  }
+
+  async _openWicket() {
+    if (!this._hass) return;
+
+    let domain;
+    let service;
+    let data = { ...(this._config.wicket_service_data || {}) };
+
+    if (this._config.wicket_service) {
+      [domain, service] = this._config.wicket_service.split(".", 2);
+      if (!domain || !service) {
+        this._notify("Параметр wicket_service должен иметь вид domain.service");
+        return;
+      }
+      if (this._config.wicket_entity && !data.entity_id) data.entity_id = this._config.wicket_entity;
+    } else {
+      const entityId = this._config.wicket_entity;
+      domain = entityId?.split(".", 1)[0];
+      const services = {
+        button: "press",
+        input_button: "press",
+        switch: "turn_on",
+        script: "turn_on",
+        cover: "open_cover",
+        lock: "unlock",
+      };
+      service = services[domain];
+      data.entity_id = entityId;
+    }
+
+    if (!domain || !service) {
+      this._notify("Не удалось определить команду открытия калитки");
+      return;
+    }
+
+    try {
+      await this._hass.callService(domain, service, data);
+    } catch (error) {
+      console.error("garage-panel: wicket open failed", error);
+      this._notify("Не удалось открыть калитку");
+    }
+  }
+
+  _notify(message) {
+    this.dispatchEvent(new CustomEvent("hass-notification", {
+      detail: { message },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   _entity(entityId) {
@@ -319,10 +430,6 @@ class GaragePanel extends HTMLElement {
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(value));
-  }
-
-  _fireEvent(type, detail) {
-    this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 
   _escape(value) {
@@ -351,72 +458,84 @@ class GaragePanel extends HTMLElement {
 
   _styles() {
     return `
-      :host { display:block; --panel-bg:#0b1220; --surface:#172033; --text:#f8fafc; --muted:#94a3b8; }
+      :host { display:block; --text:#f8fafc; --muted:#94a3b8; }
       * { box-sizing:border-box; }
-      ha-card { overflow:hidden; border-radius:28px; background:linear-gradient(145deg,#111827,#070b13); color:var(--text); }
-      .panel { padding:clamp(16px,3vw,32px); }
-      .header { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:22px; }
-      .eyebrow { color:#60a5fa; font-size:11px; font-weight:800; letter-spacing:.18em; }
-      h1 { margin:3px 0 0; font-size:clamp(25px,4vw,42px); line-height:1.05; }
-      .header-status { text-align:right; }
-      .temperature { font-size:clamp(22px,3vw,34px); font-weight:800; }
-      .online { margin-top:4px; color:var(--muted); font-size:12px; }
+      [hidden] { display:none!important; }
+      ha-card { overflow:hidden; border-radius:22px; background:linear-gradient(145deg,#111827,#070b13); color:var(--text); }
+      .panel { padding:clamp(14px,2.2vw,24px); }
+      .header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:13px; }
+      .eyebrow { color:#60a5fa; font-size:10px; font-weight:800; letter-spacing:.18em; }
+      h1 { margin:2px 0 0; font-size:clamp(22px,3vw,34px); line-height:1.05; }
+      .online { color:var(--muted); font-size:12px; white-space:nowrap; }
       .online-dot { display:inline-block; width:7px; height:7px; margin-right:6px; border-radius:50%; background:#22c55e; box-shadow:0 0 10px #22c55e; }
-      .gate-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
-      .gate-card { position:relative; min-height:390px; padding:22px; overflow:hidden; border:1px solid color-mix(in srgb,var(--state-color) 48%,transparent); border-radius:26px; background:linear-gradient(155deg,color-mix(in srgb,var(--state-color) 30%,#172033),#101827 68%); color:var(--text); text-align:left; cursor:pointer; transition:transform .16s ease, box-shadow .25s ease, background .25s ease; -webkit-tap-highlight-color:transparent; }
-      .gate-card::after { content:""; position:absolute; inset:auto -20% -55% 15%; height:80%; background:radial-gradient(circle,color-mix(in srgb,var(--state-color) 48%,transparent),transparent 70%); pointer-events:none; }
-      .gate-card:hover { transform:translateY(-2px); box-shadow:0 18px 45px color-mix(in srgb,var(--state-color) 25%,transparent); }
+      .gate-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+      .gate-card { --state-color:#94a3b8; --state-bg:#334155; --state-glow:rgba(100,116,139,.2); position:relative; min-height:205px; padding:14px; overflow:hidden; border:1px solid var(--state-color); border-radius:18px; background:linear-gradient(155deg,var(--state-bg),#101827 72%); color:var(--text); text-align:left; cursor:pointer; transition:transform .16s ease,box-shadow .22s ease; -webkit-tap-highlight-color:transparent; }
+      .gate-card::after { content:""; position:absolute; right:-15%; bottom:-55%; width:70%; height:95%; border-radius:50%; background:var(--state-glow); filter:blur(22px); pointer-events:none; }
+      .gate-card:hover { transform:translateY(-2px); box-shadow:0 12px 28px var(--state-glow); }
       .gate-card:active { transform:scale(.985); }
       .gate-card:disabled { cursor:not-allowed; filter:saturate(.65); }
-      .gate-topline { position:relative; z-index:2; display:flex; align-items:flex-start; justify-content:space-between; }
-      .gate-title { font-size:clamp(20px,2.2vw,30px); font-weight:800; }
-      .gate-subtitle,.gate-hint { color:#cbd5e1; font-size:13px; }
-      .gate-action { color:#e2e8f0; opacity:.65; }
-      .gate-visual { position:relative; z-index:2; height:205px; display:grid; place-items:center; }
-      svg { width:min(100%,420px); max-height:190px; overflow:visible; }
+      .gate-topline,.gate-bottomline { position:relative; z-index:2; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+      .gate-bottomline { align-items:flex-end; }
+      .gate-title { font-size:clamp(17px,2vw,24px); font-weight:800; }
+      .gate-subtitle,.gate-hint,.gate-temperature-label { color:#cbd5e1; font-size:11px; }
+      .gate-meta { text-align:right; white-space:nowrap; }
+      .gate-temperature { margin-top:2px; color:#fff; font-size:clamp(18px,2.2vw,25px); font-weight:850; }
+      .gate-action { color:#e2e8f0; opacity:.7; }
+      .gate-visual { position:relative; z-index:2; height:87px; display:grid; place-items:center; }
+      svg { width:min(100%,245px); max-height:82px; overflow:visible; }
       svg * { vector-effect:non-scaling-stroke; }
       .gate-frame,.garage-frame { fill:none; stroke:#dbeafe; stroke-width:7; stroke-linecap:round; stroke-linejoin:round; opacity:.9; }
-      .sliding-leaf,.sectional-leaf { fill:color-mix(in srgb,var(--state-color) 42%,#cbd5e1); stroke:#f8fafc; stroke-width:3; transition:transform 1s ease, opacity .5s ease; transform-box:fill-box; transform-origin:center; }
+      .sliding-leaf,.sectional-leaf { fill:var(--state-color); stroke:#f8fafc; stroke-width:3; transition:transform 1s ease,opacity .5s ease; transform-box:fill-box; transform-origin:center; }
       circle { fill:#f8fafc; }
       [data-state="open"] .sliding-leaf { transform:translateX(-72%); opacity:.28; }
       [data-state="opening"] .sliding-leaf,[data-state="closing"] .sliding-leaf,[data-state="moving"] .sliding-leaf { animation:slide-gate 1.8s ease-in-out infinite alternate; }
       [data-state="open"] .sectional-leaf { transform:translateY(-72%) scaleY(.28); opacity:.35; }
       [data-state="opening"] .sectional-leaf,[data-state="closing"] .sectional-leaf,[data-state="moving"] .sectional-leaf { animation:lift-gate 1.8s ease-in-out infinite alternate; }
-      .gate-state { position:relative; z-index:2; color:#fff; font-size:clamp(25px,3vw,40px); font-weight:900; letter-spacing:.035em; }
-      .gate-hint { position:relative; z-index:2; margin-top:7px; }
-      .motion-card { display:flex; align-items:center; gap:15px; margin-top:18px; padding:18px 20px; border:1px solid #263449; border-radius:20px; background:#141d2e; transition:.25s ease; }
+      .gate-state { color:#fff; font-size:clamp(18px,2.4vw,28px); font-weight:900; letter-spacing:.025em; }
+      .gate-hint { margin-top:3px; }
+      .status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+      .wicket-card,.motion-card { min-height:82px; display:flex; align-items:center; gap:12px; padding:13px 15px; border:1px solid #334155; border-radius:17px; background:#141d2e; color:var(--text); text-align:left; }
+      .wicket-card { --state-color:#94a3b8; --state-bg:#334155; --state-glow:rgba(100,116,139,.2); border-color:var(--state-color); background:linear-gradient(110deg,var(--state-bg),#141d2e 72%); cursor:pointer; transition:transform .16s ease,box-shadow .22s ease; }
+      .wicket-card:hover { transform:translateY(-1px); box-shadow:0 9px 22px var(--state-glow); }
+      .wicket-card:active { transform:scale(.99); }
+      .wicket-card:disabled { cursor:default; opacity:.78; }
+      .status-icon { flex:0 0 auto; display:grid; place-items:center; width:43px; height:43px; border-radius:13px; background:#253147; color:#cbd5e1; }
+      .wicket-card .status-icon { color:var(--state-color); }
       .motion-card.active { border-color:#22c55e; background:linear-gradient(90deg,#153424,#141d2e); }
-      .motion-icon { display:grid; place-items:center; width:47px; height:47px; border-radius:15px; background:#253147; color:#cbd5e1; }
-      .motion-card.active .motion-icon { color:#4ade80; background:#17472d; }
-      .motion-copy { flex:1; }
-      .motion-title { font-weight:750; }
-      .motion-state { margin-top:3px; color:var(--muted); font-size:13px; }
-      .pulse { width:12px; height:12px; border-radius:50%; background:#64748b; }
+      .motion-card.active .status-icon { color:#4ade80; background:#17472d; }
+      .status-copy { flex:1; min-width:0; }
+      .status-title { font-weight:800; }
+      .status-state { margin-top:2px; font-size:13px; font-weight:750; }
+      .status-hint { margin-top:2px; color:var(--muted); font-size:11px; }
+      .status-action { color:var(--state-color); }
+      .pulse { width:11px; height:11px; border-radius:50%; background:#64748b; }
       .pulse.active { background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.55); animation:pulse 1.45s infinite; }
-      .activity { margin-top:18px; padding:20px; border-radius:22px; background:#121a2a; border:1px solid #263449; }
-      .section-title { margin-bottom:10px; font-size:17px; font-weight:800; }
-      .activity-row { display:grid; grid-template-columns:35px minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px 0; border-top:1px solid rgba(148,163,184,.13); }
+      .activity { margin-top:12px; padding:15px; border-radius:17px; background:#121a2a; border:1px solid #263449; }
+      .section-title { margin-bottom:7px; font-size:15px; font-weight:800; }
+      .activity-row { display:grid; grid-template-columns:31px minmax(0,1fr) auto; align-items:center; gap:9px; padding:8px 0; border-top:1px solid rgba(148,163,184,.13); }
       .activity-row:first-child { border-top:0; }
       .activity-row ha-icon { color:#93c5fd; }
       .activity-copy { min-width:0; display:flex; flex-direction:column; }
-      .activity-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .activity-copy span,time { color:var(--muted); font-size:12px; }
+      .activity-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+      .activity-copy span,time { color:var(--muted); font-size:11px; }
       @keyframes slide-gate { from { transform:translateX(0); } to { transform:translateX(-34%); } }
       @keyframes lift-gate { from { transform:translateY(0) scaleY(1); } to { transform:translateY(-38%) scaleY(.55); } }
       @keyframes pulse { 70% { box-shadow:0 0 0 13px rgba(34,197,94,0); } 100% { box-shadow:0 0 0 0 rgba(34,197,94,0); } }
-      @media (max-width:720px) { .gate-grid { grid-template-columns:1fr; } .gate-card { min-height:350px; } .header { align-items:flex-start; } }
+      @media (max-width:720px) { .gate-grid,.status-grid { grid-template-columns:1fr; } .gate-card { min-height:210px; } .header { align-items:flex-start; } }
       @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important; } }
     `;
   }
 }
 
-customElements.define("garage-panel", GaragePanel);
+if (!customElements.get("garage-panel")) {
+  customElements.define("garage-panel", GaragePanel);
+}
 
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "garage-panel",
   name: "Garage Panel",
-  description: "Панель управления откатными и подъёмными воротами",
+  description: "Компактная панель управления воротами и калиткой",
   preview: true,
 });
 
