@@ -1,17 +1,26 @@
 # Garage Panel
 
-Компактная пользовательская Lovelace-карточка для управления:
+Пользовательская Lovelace-карточка для управления дворовыми воротами,
+гаражными воротами и калиткой.
 
-- откатными дворовыми воротами;
-- подъёмными воротами гаража;
-- калиткой;
-- индикацией движения в гараже.
+Версия `0.3.0` использует три одинаковых по размеру блока. Сам блок больше не
+отправляет команды: управление выполняется только отдельными пиктограммами.
 
-Температура на улице выводится внутри блока «Дворовые ворота», а температура в
-гараже — внутри блока «Гаражные ворота». Значения всегда форматируются с одной
-цифрой после запятой.
+## Возможности
 
-## Логика состояния ворот
+В каждом блоке отображаются:
+
+- состояние объекта;
+- графическое изображение ворот или калитки;
+- отдельная пиктограмма управления воротами/калиткой;
+- пиктограмма лампочки для включения и выключения света;
+- встроенная индикация движения от соответствующего датчика.
+
+Температура на улице выводится в блоке «Дворовые ворота», температура в гараже —
+в блоке «Гаражные ворота». Значения форматируются с одной цифрой после запятой.
+Отдельный блок «Движение в гараже» удалён.
+
+## Логика ворот
 
 | Датчик «Открыто» | Датчик «Закрыто» | Состояние |
 |---|---|---|
@@ -20,34 +29,16 @@
 | `off` | `off` | движение |
 | `on` | `on` | ошибка датчиков |
 
-Когда оба датчика выключены, направление берётся из состояния соответствующей
-сущности `cover`: `opening` или `closing`. Если `cover` не сообщает направление,
-панель показывает «Движение».
-
-Нажатие на блок ворот вызывает:
-
-```yaml
-service: cover.toggle
-```
-
-При ошибке концевиков или недоступности сущностей управление блокируется.
+Направление движения берётся из состояния `cover`: `opening` или `closing`.
+Нажатие на пиктограмму ворот вызывает `cover.toggle`.
 
 ## Калитка
 
-Состояние калитки определяется параметром `wicket_sensor`:
+`wicket_sensor` используется только для отображения состояния. Пиктограмма
+калитки остаётся активной и при открытой калитке. Для
+`switch.ulitsa_courtyard_kalitka` вызывается `switch.turn_on`.
 
-- `off` — закрыта;
-- `on` — открыта.
-
-Положение калитки используется только для индикации. Кнопка открытия замка
-остаётся активной и при закрытой, и при открытой калитке. Она блокируется только
-при отсутствии или недоступности `wicket_sensor`.
-
-В версии `0.2.2` блок принудительно удаляет HTML-атрибут `disabled` при доступном
-датчике. Это устраняет ситуацию, когда карточка оставалась некликабельной после
-перехода калитки в открытое состояние.
-
-По домену сущности `wicket_entity` сервис выбирается автоматически:
+Поддерживаемые домены `wicket_entity`:
 
 | Домен | Сервис |
 |---|---|
@@ -58,8 +49,29 @@ service: cover.toggle
 | `cover` | `cover.open_cover` |
 | `lock` | `lock.unlock` |
 
-Для нестандартной команды можно явно задать `wicket_service` в формате
-`domain.service` и, при необходимости, `wicket_service_data`.
+Для нестандартной команды можно задать `wicket_service` и
+`wicket_service_data`.
+
+## Свет
+
+Параметры `courtyard_light_entity`, `garage_light_entity` и
+`wicket_light_entity` принимают сущности света или переключателя. Нажатие на
+лампочку вызывает универсальный сервис `homeassistant.toggle`.
+
+Пиктограмма жёлтая, когда сущность включена. Если параметр не задан, лампочка в
+соответствующем блоке скрывается.
+
+## Датчики движения
+
+Используются отдельные параметры:
+
+- `courtyard_motion_sensor`;
+- `garage_motion_sensor`;
+- `wicket_motion_sensor`.
+
+При активном датчике индикатор внутри блока становится зелёным и показывает
+«Движение». Старый параметр `motion_sensor` поддерживается как псевдоним только
+для `garage_motion_sensor`.
 
 ## Установка
 
@@ -69,26 +81,19 @@ service: cover.toggle
 /config/www/homeassistant-ui/
 ```
 
-Добавьте ресурс Lovelace:
+Добавьте Lovelace-ресурс:
 
 ```text
-/local/homeassistant-ui/panels/garage/src/garage-panel-0.2.2.js?v=0.2.2
+/local/homeassistant-ui/panels/garage/src/garage-panel-0.3.0.js?v=0.3.0
 ```
 
-Тип ресурса:
+Тип ресурса: `JavaScript Module`.
 
-```text
-JavaScript Module
-```
+Не подключайте одновременно старые файлы `garage-panel.js`,
+`garage-panel-0.2.1.js` или `garage-panel-0.2.2.js`: пользовательский элемент
+`garage-panel` должен регистрироваться только одним ресурсом.
 
-Модуль `garage-panel-0.2.2.js` загружает базовую версию `garage-panel.js`,
-оставляет кнопку калитки активной при открытом датчике и явно вызывает
-`switch.turn_on` для сущностей домена `switch`.
-
-После обновления файла увеличивайте параметр `v`, чтобы браузер не использовал
-старую версию из кэша.
-
-## Конфигурация
+## Пример конфигурации
 
 ```yaml
 type: custom:garage-panel
@@ -99,26 +104,29 @@ courtyard_cover: cover.courtyard_gates
 courtyard_open_sensor: binary_sensor.courtyard_gate_open_state
 courtyard_closed_sensor: binary_sensor.courtyard_gate_close_state
 courtyard_temperature_sensor: sensor.outdoor_temperature
+courtyard_light_entity: light.courtyard_light
+courtyard_motion_sensor: binary_sensor.courtyard_motion
 
 garage_name: Гаражные ворота
 garage_cover: cover.garage
 garage_open_sensor: binary_sensor.garage_open_state
 garage_closed_sensor: binary_sensor.garage_close_state
 garage_temperature_sensor: sensor.garage_temperature
+garage_light_entity: light.garage_light
+garage_motion_sensor: binary_sensor.garage_motion
 
 wicket_name: Калитка
 wicket_sensor: binary_sensor.wicket_state
 wicket_entity: switch.ulitsa_courtyard_kalitka
-
-motion_name: Движение в гараже
-motion_sensor: binary_sensor.garage_presense_detector
+wicket_light_entity: light.wicket_light
+wicket_motion_sensor: binary_sensor.wicket_motion
 
 show_activity: true
 confirm_open: false
 ```
 
-Полный пример представления находится в
-[`examples/dashboard.yaml`](examples/dashboard.yaml).
+Замените примерные `entity_id` на реальные идентификаторы Home Assistant.
+Полный пример находится в [`examples/dashboard.yaml`](examples/dashboard.yaml).
 
 ## Параметры
 
@@ -126,34 +134,28 @@ confirm_open: false
 
 | Параметр | Назначение |
 |---|---|
-| `courtyard_cover` | управление откатными воротами |
+| `courtyard_cover` | управление дворовыми воротами |
 | `courtyard_open_sensor` | датчик полностью открытого положения |
 | `courtyard_closed_sensor` | датчик полностью закрытого положения |
-| `garage_cover` | управление подъёмными воротами |
+| `garage_cover` | управление гаражными воротами |
 | `garage_open_sensor` | датчик полностью открытого положения |
 | `garage_closed_sensor` | датчик полностью закрытого положения |
+| `wicket_sensor` | датчик положения калитки |
+| `wicket_entity` | исполнительная сущность замка калитки |
 
 ### Дополнительные
 
-| Параметр | По умолчанию | Назначение |
-|---|---|---|
-| `title` | `Гараж и ворота` | заголовок панели |
-| `courtyard_temperature_sensor` | — | температура на улице в блоке дворовых ворот |
-| `garage_temperature_sensor` | — | температура внутри гаража |
-| `temperature_sensor` | — | устаревший псевдоним `garage_temperature_sensor` |
-| `wicket_name` | `Калитка` | название блока калитки |
-| `wicket_sensor` | — | датчик открытого/закрытого состояния калитки |
-| `wicket_entity` | — | сущность, которой отправляется команда открытия |
-| `wicket_service` | автоматически | явный сервис открытия, например `esphome.open_wicket` |
-| `wicket_service_data` | `{}` | дополнительные данные для явного сервиса |
-| `motion_sensor` | — | микроволновый датчик движения |
-| `show_activity` | `true` | показывать последние изменения сущностей |
-| `confirm_open` | `false` | запрашивать подтверждение перед открытием ворот |
-
-Блок калитки скрывается, если не заданы `wicket_sensor` и команда открытия.
-
-## Важно
-
-Блок «Последние изменения» показывает время `last_changed` текущих сущностей.
-Это не архив журнала Home Assistant и после перезапуска может отличаться от
-полной истории в Logbook.
+| Параметр | Назначение |
+|---|---|
+| `courtyard_temperature_sensor` | температура на улице |
+| `garage_temperature_sensor` | температура в гараже |
+| `courtyard_light_entity` | свет возле дворовых ворот |
+| `garage_light_entity` | свет в гараже |
+| `wicket_light_entity` | свет возле калитки |
+| `courtyard_motion_sensor` | движение возле дворовых ворот |
+| `garage_motion_sensor` | движение в гараже |
+| `wicket_motion_sensor` | движение возле калитки |
+| `wicket_service` | явный сервис открытия калитки |
+| `wicket_service_data` | данные для явного сервиса |
+| `show_activity` | показывать последние изменения |
+| `confirm_open` | подтверждать открытие ворот |
