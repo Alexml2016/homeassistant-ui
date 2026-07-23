@@ -39,8 +39,11 @@ service: cover.toggle
 - `off` — закрыта;
 - `on` — открыта.
 
-Нажатие на закрытую калитку вызывает команду открытия. По домену сущности
-`wicket_entity` сервис выбирается автоматически:
+Положение калитки используется только для индикации. Кнопка открытия замка
+остаётся активной и при закрытой, и при открытой калитке. Она блокируется только
+при отсутствии или недоступности `wicket_sensor`.
+
+По домену сущности `wicket_entity` сервис выбирается автоматически:
 
 | Домен | Сервис |
 |---|---|
@@ -65,7 +68,7 @@ service: cover.toggle
 Добавьте ресурс Lovelace:
 
 ```text
-/local/homeassistant-ui/panels/garage/src/garage-panel.js?v=0.2.0
+/local/homeassistant-ui/panels/garage/src/garage-panel-0.2.1.js?v=0.2.1
 ```
 
 Тип ресурса:
@@ -73,6 +76,9 @@ service: cover.toggle
 ```text
 JavaScript Module
 ```
+
+Модуль `garage-panel-0.2.1.js` загружает базовую версию `garage-panel.js` и
+применяет исправленную логику блока калитки.
 
 После обновления файла увеличивайте параметр `v`, чтобы браузер не использовал
 старую версию из кэша.
@@ -97,7 +103,7 @@ garage_temperature_sensor: sensor.garage_temperature
 
 wicket_name: Калитка
 wicket_sensor: binary_sensor.wicket_state
-wicket_entity: button.wicket_open
+wicket_entity: switch.ulitsa_courtyard_kalitka
 
 motion_name: Движение в гараже
 motion_sensor: binary_sensor.garage_presense_detector
