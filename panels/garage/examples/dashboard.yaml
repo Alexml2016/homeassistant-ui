@@ -1,5 +1,5 @@
 # Подключите JavaScript как Lovelace Resource:
-# URL: /local/homeassistant-ui/panels/garage/src/garage-panel.js?v=0.2.0
+# URL: /local/homeassistant-ui/panels/garage/src/garage-panel-0.2.1.js?v=0.2.1
 # Тип: JavaScript Module
 
 views:
@@ -24,10 +24,11 @@ views:
         garage_closed_sensor: binary_sensor.garage_close_state
         garage_temperature_sensor: sensor.garage_temperature
 
-        # Калитка: датчик состояния и команда открытия
+        # Калитка: датчик положения и импульс открытия замка
+        # Команда разрешена как при закрытой, так и при открытой калитке.
         wicket_name: Калитка
         wicket_sensor: binary_sensor.wicket_state
-        wicket_entity: button.wicket_open
+        wicket_entity: switch.ulitsa_courtyard_kalitka
 
         # Микроволновый датчик движения
         motion_name: Движение в гараже
