@@ -1,5 +1,5 @@
 # Подключите JavaScript как Lovelace Resource:
-# URL: /local/homeassistant-ui/panels/garage/src/garage-panel-0.2.2.js?v=0.2.2
+# URL: /local/homeassistant-ui/panels/garage/src/garage-panel-0.3.0.js?v=0.3.0
 # Тип: JavaScript Module
 
 views:
@@ -10,30 +10,30 @@ views:
       - type: custom:garage-panel
         title: Гараж и ворота
 
-        # Откатные ворота во дворе
+        # Дворовые ворота
         courtyard_name: Дворовые ворота
         courtyard_cover: cover.courtyard_gates
         courtyard_open_sensor: binary_sensor.courtyard_gate_open_state
         courtyard_closed_sensor: binary_sensor.courtyard_gate_close_state
         courtyard_temperature_sensor: sensor.outdoor_temperature
+        courtyard_light_entity: light.courtyard_light
+        courtyard_motion_sensor: binary_sensor.courtyard_motion
 
-        # Подъёмные ворота гаража
+        # Гаражные ворота
         garage_name: Гаражные ворота
         garage_cover: cover.garage
         garage_open_sensor: binary_sensor.garage_open_state
         garage_closed_sensor: binary_sensor.garage_close_state
         garage_temperature_sensor: sensor.garage_temperature
+        garage_light_entity: light.garage_light
+        garage_motion_sensor: binary_sensor.garage_motion
 
-        # Калитка: датчик положения и импульс открытия замка
-        # Команда разрешена как при закрытой, так и при открытой калитке.
+        # Калитка
         wicket_name: Калитка
         wicket_sensor: binary_sensor.wicket_state
         wicket_entity: switch.ulitsa_courtyard_kalitka
+        wicket_light_entity: light.wicket_light
+        wicket_motion_sensor: binary_sensor.wicket_motion
 
-        # Микроволновый датчик движения
-        motion_name: Движение в гараже
-        motion_sensor: binary_sensor.garage_presense_detector
-
-        # Дополнительные настройки
         show_activity: true
         confirm_open: false
