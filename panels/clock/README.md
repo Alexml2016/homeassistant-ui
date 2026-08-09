@@ -19,12 +19,14 @@
 - текущая дата;
 - температура из атрибута `temperature` сущности `weather`;
 - режим охраны из бинарного сенсора;
-- при включённой охране часы уменьшаются, становятся красными и появляется надпись `ОХРАНА ВКЛЮЧЕНА`;
+- при включённой охране надпись `ОХРАНА ВКЛЮЧЕНА` становится главным крупным элементом панели, а часы уменьшаются;
+- полноэкранный режим камеры при нажатии кнопки звонка;
+- автоматический возврат к часам после настраиваемого времени;
 - адаптация под альбомную и портретную ориентацию;
 - учёт safe-area iPhone;
 - настраиваемые ширина цифр, расстояние между часами и минутами и толщина сегментов;
 - кнопка `Обновить` в левом нижнем углу для перезагрузки панели;
-- отсутствие зависимостей от Lovelace, HACS, `button-card` и `card-mod`.
+- отсутствие сторонних зависимостей HACS, `button-card` и `card-mod`.
 
 ## Файлы
 
@@ -79,7 +81,12 @@ panel_custom:
     config:
       alarmEntity: binary_sensor.alarm_gateway_alarm_relay_state
       weatherEntity: weather.home_assistant
+      doorbellEntity: binary_sensor.doorbell_button
+      cameraEntity: camera.doorbell
       armedState: "on"
+      doorbellPressedState: "on"
+      doorbellDisplaySeconds: 30
+      cameraFitMode: cover
       locale: ru-RU
       alarmText: ОХРАНА ВКЛЮЧЕНА
       temperaturePrefix: На улице
@@ -90,13 +97,29 @@ panel_custom:
 
 Если раздел `panel_custom:` уже существует, добавьте в него только новый элемент списка `- name: clock-panel`.
 
-### 3. Проверить сущности
+### 3. Настроить камеру звонка
+
+RTSP-поток не записывается непосредственно в исходный код панели. Добавьте камеру в Home Assistant через интеграцию **Generic Camera** и укажите RTSP-адрес камеры в поле **Stream Source URL**. Логин и пароль камеры лучше хранить в настройках Home Assistant, а не в публичном GitHub-репозитории.
+
+После создания камеры проверьте её `entity_id` в **Инструменты разработчика → Состояния**. В примере используется:
+
+```text
+camera.doorbell
+```
+
+Если Home Assistant создал другой идентификатор, укажите его в `cameraEntity`.
+
+Для RTSP-потока должна быть доступна интеграция `stream`. При стандартном `default_config` она загружается автоматически.
+
+### 4. Проверить сущности
 
 В **Инструменты разработчика → Состояния** проверьте:
 
 ```text
 binary_sensor.alarm_gateway_alarm_relay_state
 weather.home_assistant
+binary_sensor.doorbell_button
+camera.doorbell
 ```
 
 У погодной сущности должен быть атрибут:
@@ -107,7 +130,7 @@ temperature: 18.4
 
 Если идентификаторы отличаются, измените их в секции `config`.
 
-### 4. Проверить конфигурацию и перезапустить
+### 5. Проверить конфигурацию и перезапустить
 
 В Home Assistant:
 
@@ -117,7 +140,7 @@ temperature: 18.4
 
 Затем выполните полный перезапуск Home Assistant.
 
-### 5. Открыть панель
+### 6. Открыть панель
 
 ```text
 http://homeassistant.local:8123/clock-screen
@@ -125,13 +148,39 @@ http://homeassistant.local:8123/clock-screen
 
 Панель появится как отдельный раздел верхнего уровня. Её можно выбрать в штатном Kiosk Mode приложения Home Assistant для iOS.
 
+## Режим охраны
+
+Когда `alarmEntity` переходит в состояние `armedState`:
+
+- фон становится красным;
+- надпись `ОХРАНА ВКЛЮЧЕНА` занимает основной визуальный блок и пульсирует;
+- часы уменьшаются примерно вдвое и переходят во второстепенный блок;
+- дата и температура остаются видимыми.
+
+## Режим звонка
+
+Когда `doorbellEntity` переходит в состояние `doorbellPressedState`, панель:
+
+1. открывает полноэкранное видео сущности `cameraEntity`;
+2. показывает метку `ЗВОНОК`;
+3. держит поток открытым в течение `doorbellDisplaySeconds`;
+4. автоматически возвращается к часам;
+5. при повторном нажатии звонка таймер запускается заново.
+
+Панель сначала использует штатный компонент видеопотока Home Assistant. Если он недоступен, для совместимых браузеров используется HLS-поток через WebSocket API Home Assistant.
+
 ## Настройки
 
 | Параметр | Значение по умолчанию | Назначение |
 |---|---|---|
 | `alarmEntity` | `binary_sensor.alarm_gateway_alarm_relay_state` | состояние режима охраны |
 | `weatherEntity` | `weather.home_assistant` | погодная сущность |
+| `doorbellEntity` | `binary_sensor.doorbell_button` | бинарный сенсор кнопки звонка |
+| `cameraEntity` | `camera.doorbell` | камера, показываемая при звонке |
 | `armedState` | `on` | состояние, означающее включённую охрану |
+| `doorbellPressedState` | `on` | состояние, означающее нажатие звонка |
+| `doorbellDisplaySeconds` | `30` | сколько секунд показывать камеру после звонка |
+| `cameraFitMode` | `cover` | заполнение экрана камерой: `cover`, `contain` или `fill` |
 | `locale` | `ru-RU` | формат даты |
 | `alarmText` | `ОХРАНА ВКЛЮЧЕНА` | текст предупреждения |
 | `temperaturePrefix` | `На улице` | подпись температуры |
@@ -139,7 +188,7 @@ http://homeassistant.local:8123/clock-screen
 | `hourMinuteGap` | `42px` | расстояние между блоками часов и минут; принимает CSS-значение |
 | `segmentThickness` | `clamp(16px, 3.1vmin, 34px)` | толщина сегментов; принимает CSS-значение |
 
-Если реле работает инверсно, укажите:
+Если реле охраны работает инверсно, укажите:
 
 ```yaml
 armedState: "off"
@@ -164,7 +213,7 @@ segmentThickness: 20px
 3. при необходимости измените URL модуля, добавив версию:
 
 ```yaml
-module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2
+module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.2.0
 ```
 
 ## Примечание о шрифте
