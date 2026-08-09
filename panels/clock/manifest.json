@@ -1,7 +1,7 @@
 {
   "name": "Home Assistant Clock Panel",
-  "version": "2.1.1",
-  "description": "Fullscreen DOM-rendered seven-segment clock panel with configurable display geometry and a refresh control",
+  "version": "2.2.0",
+  "description": "Fullscreen seven-segment clock panel with emphasized armed mode, configurable geometry, refresh control, and doorbell camera view",
   "entrypoint": "src/clock-panel.js",
   "home_assistant": {
     "panel_name": "clock-panel",
@@ -9,6 +9,8 @@
   },
   "entities": {
     "alarm": "binary_sensor.alarm_gateway_alarm_relay_state",
-    "weather": "weather.home_assistant"
+    "weather": "weather.home_assistant",
+    "doorbell": "binary_sensor.doorbell_button",
+    "camera": "camera.doorbell"
   }
 }
