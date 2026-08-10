@@ -1,11 +1,11 @@
-import { SegmentRenderer } from "./segments.js?v=2.2.2";
-import { AlarmState } from "./alarm.js?v=2.2.2";
-import { WeatherState } from "./weather.js?v=2.2.2";
-import { ClockController } from "./clock.js?v=2.2.2";
-import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js?v=2.2.2";
+import { SegmentRenderer } from "./segments.js?v=2.3.0";
+import { AlarmState } from "./alarm.js?v=2.3.0";
+import { WeatherState } from "./weather.js?v=2.3.0";
+import { ClockController } from "./clock.js?v=2.3.0";
+import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js?v=2.3.0";
 
-const PANEL_VERSION = "2.2.2";
-const STYLE_URL = new URL("./clock.css?v=2.2.2", import.meta.url).href;
+const PANEL_VERSION = "2.3.0";
+const STYLE_URL = new URL("./clock.css?v=2.3.0", import.meta.url).href;
 
 class ClockPanel extends HTMLElement {
   constructor() {
@@ -29,6 +29,8 @@ class ClockPanel extends HTMLElement {
     this._unsubscribeStateChanged = null;
     this._subscriptionStatus = "ожидание";
     this._lastDoorbellTriggerSource = "—";
+    this._doorOpenBusy = false;
+    this._doorOpenStatusTimer = null;
 
     this._renderShell();
   }
@@ -136,6 +138,11 @@ class ClockPanel extends HTMLElement {
       this._alarmBanner.textContent = this._config.alarmText;
     }
 
+    if (this._doorOpenButton) {
+      this._doorOpenButton.textContent = this._config.doorOpenButtonText;
+      this._doorOpenButton.setAttribute("aria-label", this._config.doorOpenButtonText);
+    }
+
     if (this._clock) {
       this._clock.stop();
       this._clock = new ClockController({
@@ -189,6 +196,10 @@ class ClockPanel extends HTMLElement {
         <div class="doorbell-media" aria-label="Видео с камеры звонка"></div>
         <div class="doorbell-label">ЗВОНОК</div>
         <div class="doorbell-camera-error" role="status" aria-live="polite"></div>
+        <div class="door-open-controls">
+          <button class="door-open-button" type="button"></button>
+          <div class="door-open-status" role="status" aria-live="polite"></div>
+        </div>
       </div>
       <button class="refresh-button" type="button" aria-label="Обновить панель">Обновить</button>
       <div class="clock-error" role="status" aria-live="polite"></div>
@@ -206,12 +217,16 @@ class ClockPanel extends HTMLElement {
     this._doorbellOverlay = screen.querySelector(".doorbell-overlay");
     this._doorbellMedia = screen.querySelector(".doorbell-media");
     this._doorbellCameraError = screen.querySelector(".doorbell-camera-error");
+    this._doorOpenButton = screen.querySelector(".door-open-button");
+    this._doorOpenStatus = screen.querySelector(".door-open-status");
     this._refreshButton = screen.querySelector(".refresh-button");
     this._error = screen.querySelector(".clock-error");
     this._doorbellDebug = screen.querySelector(".doorbell-debug");
     this._doorbellTestButton = screen.querySelector(".doorbell-test-button");
 
     this._alarmBanner.textContent = this._config.alarmText;
+    this._doorOpenButton.textContent = this._config.doorOpenButtonText;
+    this._doorOpenButton.setAttribute("aria-label", this._config.doorOpenButtonText);
 
     this._refreshButton.addEventListener("click", () => {
       const url = new URL(window.location.href);
@@ -219,11 +234,16 @@ class ClockPanel extends HTMLElement {
       window.location.replace(url.href);
     });
 
+    this._doorOpenButton.addEventListener("click", () => {
+      this._openDoor();
+    });
+
     this._doorbellTestButton.addEventListener("click", () => {
       this._showDoorbellCamera("manual-test");
     });
 
     this._applyDoorbellDebugVisibility();
+    this._updateDoorOpenButton();
   }
 
   _applyDoorbellDebugVisibility() {
@@ -253,6 +273,7 @@ class ClockPanel extends HTMLElement {
       this._updateAlarm();
       this._updateWeather();
       this._updateDoorbell();
+      this._updateDoorOpenButton();
       this._showError("");
     } catch (error) {
       console.error("clock-panel update failed", error);
@@ -324,6 +345,95 @@ class ClockPanel extends HTMLElement {
     this._updateDoorbellDebug();
   }
 
+  _updateDoorOpenButton() {
+    if (!this._doorOpenButton) return;
+
+    const entityId = String(this._config?.doorSwitchEntity ?? "").trim();
+    const entity = entityId ? readEntity(this._hass, entityId) : null;
+    const state = this._normalizeValue(entity?.state);
+    const available = Boolean(entity) && state !== "unknown" && state !== "unavailable";
+
+    this._doorOpenButton.textContent = this._config?.doorOpenButtonText || "Открыть калитку";
+    this._doorOpenButton.disabled = this._doorOpenBusy || !available;
+    this._doorOpenButton.classList.toggle("is-busy", this._doorOpenBusy);
+
+    if (!entityId) {
+      this._doorOpenButton.title = "Не задан doorSwitchEntity";
+    } else if (!entity) {
+      this._doorOpenButton.title = `Сущность ${entityId} не найдена`;
+    } else if (!available) {
+      this._doorOpenButton.title = `Сущность ${entityId} недоступна`;
+    } else {
+      this._doorOpenButton.title = entityId;
+    }
+  }
+
+  async _openDoor() {
+    if (this._doorOpenBusy) return;
+
+    const entityId = String(this._config?.doorSwitchEntity ?? "").trim();
+    const entity = entityId ? readEntity(this._hass, entityId) : null;
+    const state = this._normalizeValue(entity?.state);
+    const available = Boolean(entity) && state !== "unknown" && state !== "unavailable";
+
+    if (!entityId) {
+      this._setDoorOpenStatus("Не настроено реле калитки", "error", 4000);
+      return;
+    }
+
+    if (!available) {
+      this._setDoorOpenStatus("Реле калитки недоступно", "error", 4000);
+      this._updateDoorOpenButton();
+      return;
+    }
+
+    if (typeof this._hass?.callService !== "function") {
+      this._setDoorOpenStatus("Сервис Home Assistant недоступен", "error", 4000);
+      return;
+    }
+
+    this._doorOpenBusy = true;
+    this._updateDoorOpenButton();
+    this._setDoorOpenStatus("Открываем…");
+
+    try {
+      await this._hass.callService("switch", "turn_on", { entity_id: entityId });
+      this._setDoorOpenStatus("Команда открытия отправлена", "success", 3000);
+    } catch (error) {
+      console.error("Courtyard gate open failed", error);
+      this._setDoorOpenStatus("Не удалось открыть калитку", "error", 4500);
+    } finally {
+      window.setTimeout(() => {
+        this._doorOpenBusy = false;
+        this._updateDoorOpenButton();
+      }, 900);
+    }
+  }
+
+  _setDoorOpenStatus(message, type = "", timeoutMs = 0) {
+    if (!this._doorOpenStatus) return;
+
+    if (this._doorOpenStatusTimer) {
+      clearTimeout(this._doorOpenStatusTimer);
+      this._doorOpenStatusTimer = null;
+    }
+
+    this._doorOpenStatus.textContent = message;
+    this._doorOpenStatus.classList.remove("is-error", "is-success");
+    if (type === "error") this._doorOpenStatus.classList.add("is-error");
+    if (type === "success") this._doorOpenStatus.classList.add("is-success");
+
+    if (timeoutMs > 0) {
+      this._doorOpenStatusTimer = window.setTimeout(() => {
+        this._doorOpenStatusTimer = null;
+        if (this._doorOpenStatus) {
+          this._doorOpenStatus.textContent = "";
+          this._doorOpenStatus.classList.remove("is-error", "is-success");
+        }
+      }, timeoutMs);
+    }
+  }
+
   _subscribeStateChanges() {
     const connection = this._hass?.connection;
     if (!this.isConnected || !connection || this._stateChangedConnection === connection) return;
@@ -371,9 +481,16 @@ class ClockPanel extends HTMLElement {
   }
 
   _handleStateChanged(event) {
-    const configuredEntityId = String(this._config?.doorbellEntity ?? "").trim();
     const eventEntityId = String(event?.data?.entity_id ?? "").trim();
-    if (!eventEntityId || eventEntityId !== configuredEntityId) return;
+    if (!eventEntityId) return;
+
+    const gateEntityId = String(this._config?.doorSwitchEntity ?? "").trim();
+    if (eventEntityId === gateEntityId) {
+      this._updateDoorOpenButton();
+    }
+
+    const configuredEntityId = String(this._config?.doorbellEntity ?? "").trim();
+    if (eventEntityId !== configuredEntityId) return;
 
     const oldState = this._normalizeValue(event?.data?.old_state?.state);
     const newState = this._normalizeValue(event?.data?.new_state?.state);
@@ -403,6 +520,8 @@ class ClockPanel extends HTMLElement {
     this._doorbellActive = true;
     this._screen.classList.add("is-doorbell-active");
     this._doorbellOverlay.setAttribute("aria-hidden", "false");
+    this._setDoorOpenStatus("");
+    this._updateDoorOpenButton();
     this._updateDoorbellDebug();
 
     if (this._doorbellTimer) {
@@ -424,8 +543,14 @@ class ClockPanel extends HTMLElement {
       this._doorbellTimer = null;
     }
 
+    if (this._doorOpenStatusTimer) {
+      clearTimeout(this._doorOpenStatusTimer);
+      this._doorOpenStatusTimer = null;
+    }
+
     this._doorbellRequestToken += 1;
     this._doorbellActive = false;
+    this._doorOpenBusy = false;
 
     if (this._screen) this._screen.classList.remove("is-doorbell-active");
     if (this._doorbellOverlay) this._doorbellOverlay.setAttribute("aria-hidden", "true");
@@ -439,6 +564,11 @@ class ClockPanel extends HTMLElement {
     this._cameraStreamElement = null;
     this._doorbellMedia?.replaceChildren();
     if (this._doorbellCameraError) this._doorbellCameraError.textContent = "";
+    if (this._doorOpenStatus) {
+      this._doorOpenStatus.textContent = "";
+      this._doorOpenStatus.classList.remove("is-error", "is-success");
+    }
+    this._updateDoorOpenButton();
     this._updateDoorbellDebug();
   }
 
