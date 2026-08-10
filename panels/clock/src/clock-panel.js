@@ -1,10 +1,11 @@
-import { SegmentRenderer } from "./segments.js?v=2.2.1";
-import { AlarmState } from "./alarm.js?v=2.2.1";
-import { WeatherState } from "./weather.js?v=2.2.1";
-import { ClockController } from "./clock.js?v=2.2.1";
-import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js?v=2.2.1";
+import { SegmentRenderer } from "./segments.js?v=2.2.2";
+import { AlarmState } from "./alarm.js?v=2.2.2";
+import { WeatherState } from "./weather.js?v=2.2.2";
+import { ClockController } from "./clock.js?v=2.2.2";
+import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js?v=2.2.2";
 
-const STYLE_URL = new URL("./clock.css?v=2.2.1", import.meta.url).href;
+const PANEL_VERSION = "2.2.2";
+const STYLE_URL = new URL("./clock.css?v=2.2.2", import.meta.url).href;
 
 class ClockPanel extends HTMLElement {
   constructor() {
@@ -26,6 +27,8 @@ class ClockPanel extends HTMLElement {
     this._cameraStreamElement = null;
     this._stateChangedConnection = null;
     this._unsubscribeStateChanged = null;
+    this._subscriptionStatus = "ожидание";
+    this._lastDoorbellTriggerSource = "—";
 
     this._renderShell();
   }
@@ -35,6 +38,7 @@ class ClockPanel extends HTMLElement {
     this._clock.start();
     this._subscribeStateChanges();
     this._updateFromHass();
+    this._updateDoorbellDebug();
   }
 
   disconnectedCallback() {
@@ -44,12 +48,22 @@ class ClockPanel extends HTMLElement {
   }
 
   set hass(hass) {
+    const previousSnapshot = this._getDoorbellSnapshot(this._hass);
     const connectionChanged = this._hass?.connection !== hass?.connection;
+
     this._hass = hass;
+
+    const currentSnapshot = this._getDoorbellSnapshot(this._hass);
+    if (currentSnapshot.pressed && !previousSnapshot.pressed) {
+      this._showDoorbellCamera("hass");
+    }
+
     if (connectionChanged || !this._stateChangedConnection) {
       this._subscribeStateChanges();
     }
+
     this._updateFromHass();
+    this._updateDoorbellDebug();
   }
 
   get hass() {
@@ -57,17 +71,43 @@ class ClockPanel extends HTMLElement {
   }
 
   set panel(panel) {
-    const customConfig = panel?.config ?? panel ?? {};
+    const panelConfig = panel?.config ?? panel ?? {};
+    const nestedConfig = panelConfig?.config;
+    const customConfig = nestedConfig && typeof nestedConfig === "object"
+      ? { ...panelConfig, ...nestedConfig }
+      : panelConfig;
     this._applyConfig(customConfig);
   }
 
   set narrow(_value) {
     // Home Assistant may set this property for responsive panels.
-    // The panel itself is responsive through CSS media queries.
   }
 
   set route(_value) {
     // Reserved by the Home Assistant custom-panel API.
+  }
+
+  _normalizeValue(value) {
+    return String(value ?? "").trim().toLowerCase();
+  }
+
+  _getDoorbellSnapshot(hass = this._hass) {
+    const entityId = String(this._config?.doorbellEntity ?? "").trim();
+    const entity = entityId ? readEntity(hass, entityId) : null;
+    const rawState = entity?.state ?? "";
+    const normalizedState = this._normalizeValue(rawState);
+    const pressedState = this._normalizeValue(this._config?.doorbellPressedState);
+    const available = Boolean(entity) && normalizedState !== "unknown" && normalizedState !== "unavailable";
+
+    return {
+      entityId,
+      entity,
+      rawState,
+      normalizedState,
+      pressedState,
+      available,
+      pressed: available && normalizedState === pressedState,
+    };
   }
 
   _ensureClock() {
@@ -90,6 +130,7 @@ class ClockPanel extends HTMLElement {
     this._alarmState = new AlarmState(this._config);
     this._weatherState = new WeatherState(this._config);
     this._applyDisplaySettings();
+    this._applyDoorbellDebugVisibility();
 
     if (this._alarmBanner) {
       this._alarmBanner.textContent = this._config.alarmText;
@@ -110,6 +151,7 @@ class ClockPanel extends HTMLElement {
     this._lastDoorbellSignature = "";
     this._hideDoorbellCamera();
     this._updateFromHass();
+    this._updateDoorbellDebug();
   }
 
   _applyDisplaySettings() {
@@ -135,6 +177,7 @@ class ClockPanel extends HTMLElement {
 
     const screen = document.createElement("main");
     screen.className = "clock-screen";
+    screen.dataset.version = PANEL_VERSION;
     screen.innerHTML = `
       <div class="alarm-banner" role="status" aria-live="polite"></div>
       <div class="clock-holder">
@@ -149,6 +192,8 @@ class ClockPanel extends HTMLElement {
       </div>
       <button class="refresh-button" type="button" aria-label="Обновить панель">Обновить</button>
       <div class="clock-error" role="status" aria-live="polite"></div>
+      <div class="doorbell-debug" style="position:absolute;right:max(12px,env(safe-area-inset-right));bottom:max(58px,calc(env(safe-area-inset-bottom) + 48px));z-index:40;max-width:72vw;padding:6px 9px;border-radius:8px;background:rgb(0 0 0 / 0.58);color:rgb(255 255 255 / 0.80);font-size:11px;line-height:1.35;text-align:right;pointer-events:none;white-space:normal"></div>
+      <button class="doorbell-test-button" type="button" style="position:absolute;right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));z-index:40;min-height:38px;padding:8px 12px;border:1px solid rgb(255 255 255 / 0.22);border-radius:10px;background:rgb(0 0 0 / 0.38);color:rgb(255 255 255 / 0.80);font:inherit;font-size:13px">Тест звонка</button>
     `;
 
     this.shadowRoot.append(styleLink, screen);
@@ -163,12 +208,42 @@ class ClockPanel extends HTMLElement {
     this._doorbellCameraError = screen.querySelector(".doorbell-camera-error");
     this._refreshButton = screen.querySelector(".refresh-button");
     this._error = screen.querySelector(".clock-error");
+    this._doorbellDebug = screen.querySelector(".doorbell-debug");
+    this._doorbellTestButton = screen.querySelector(".doorbell-test-button");
+
     this._alarmBanner.textContent = this._config.alarmText;
+
     this._refreshButton.addEventListener("click", () => {
       const url = new URL(window.location.href);
       url.searchParams.set("_refresh", Date.now().toString());
       window.location.replace(url.href);
     });
+
+    this._doorbellTestButton.addEventListener("click", () => {
+      this._showDoorbellCamera("manual-test");
+    });
+
+    this._applyDoorbellDebugVisibility();
+  }
+
+  _applyDoorbellDebugVisibility() {
+    const visible = Boolean(this._config?.doorbellDebug);
+    if (this._doorbellDebug) this._doorbellDebug.style.display = visible ? "block" : "none";
+    if (this._doorbellTestButton) this._doorbellTestButton.style.display = visible ? "block" : "none";
+  }
+
+  _updateDoorbellDebug() {
+    if (!this._doorbellDebug) return;
+
+    const snapshot = this._getDoorbellSnapshot();
+    const stateText = snapshot.entity
+      ? String(snapshot.rawState || "(пусто)")
+      : "НЕ НАЙДЕН";
+
+    this._doorbellDebug.textContent =
+      `v${PANEL_VERSION} • ${snapshot.entityId || "doorbellEntity не задан"} = ${stateText} • ` +
+      `ожидается: ${snapshot.pressedState || "(пусто)"} • WS: ${this._subscriptionStatus} • ` +
+      `trigger: ${this._lastDoorbellTriggerSource}`;
   }
 
   _updateFromHass() {
@@ -215,33 +290,38 @@ class ClockPanel extends HTMLElement {
   }
 
   _updateDoorbell() {
-    const entityId = this._config.doorbellEntity;
-    if (!entityId) return;
+    const snapshot = this._getDoorbellSnapshot();
+    if (!snapshot.entityId) {
+      this._updateDoorbellDebug();
+      return;
+    }
 
-    const doorbell = readEntity(this._hass, entityId);
-    const rawState = doorbell?.state ?? "";
-    const available = Boolean(doorbell) && rawState !== "unknown" && rawState !== "unavailable";
-    const pressed = available && rawState === this._config.doorbellPressedState;
-    const signature = `${available}:${pressed}:${rawState}`;
+    const signature = `${snapshot.available}:${snapshot.pressed}:${snapshot.rawState}`;
 
     if (this._doorbellActive && this._cameraStreamElement?.tagName === "HA-CAMERA-STREAM") {
       const cameraState = readEntity(this._hass, this._config.cameraEntity);
       if (cameraState) this._cameraStreamElement.stateObj = cameraState;
     }
 
-    if (signature === this._lastDoorbellSignature) return;
+    if (signature === this._lastDoorbellSignature) {
+      this._updateDoorbellDebug();
+      return;
+    }
+
     this._lastDoorbellSignature = signature;
 
     console.debug("clock-panel doorbell state", {
-      entityId,
-      rawState,
-      pressed,
+      entityId: snapshot.entityId,
+      rawState: snapshot.rawState,
+      pressed: snapshot.pressed,
       configuredPressedState: this._config.doorbellPressedState,
     });
 
-    if (pressed) {
-      this._showDoorbellCamera();
+    if (snapshot.pressed) {
+      this._showDoorbellCamera("hass-state");
     }
+
+    this._updateDoorbellDebug();
   }
 
   _subscribeStateChanges() {
@@ -250,6 +330,8 @@ class ClockPanel extends HTMLElement {
 
     this._teardownStateChanges();
     this._stateChangedConnection = connection;
+    this._subscriptionStatus = "подключение";
+    this._updateDoorbellDebug();
 
     Promise.resolve(
       connection.subscribeEvents((event) => this._handleStateChanged(event), "state_changed")
@@ -260,11 +342,15 @@ class ClockPanel extends HTMLElement {
           return;
         }
         this._unsubscribeStateChanged = unsubscribe;
+        this._subscriptionStatus = "OK";
+        this._updateDoorbellDebug();
       })
       .catch((error) => {
         if (this._stateChangedConnection === connection) {
           this._stateChangedConnection = null;
         }
+        this._subscriptionStatus = "ОШИБКА";
+        this._updateDoorbellDebug();
         console.warn("clock-panel state_changed subscription failed", error);
       });
   }
@@ -285,31 +371,39 @@ class ClockPanel extends HTMLElement {
   }
 
   _handleStateChanged(event) {
-    const entityId = event?.data?.entity_id;
-    if (!entityId || entityId !== this._config.doorbellEntity) return;
+    const configuredEntityId = String(this._config?.doorbellEntity ?? "").trim();
+    const eventEntityId = String(event?.data?.entity_id ?? "").trim();
+    if (!eventEntityId || eventEntityId !== configuredEntityId) return;
 
-    const oldState = event?.data?.old_state?.state ?? "";
-    const newState = event?.data?.new_state?.state ?? "";
-    const pressed = newState === this._config.doorbellPressedState;
+    const oldState = this._normalizeValue(event?.data?.old_state?.state);
+    const newState = this._normalizeValue(event?.data?.new_state?.state);
+    const pressedState = this._normalizeValue(this._config?.doorbellPressedState);
+    const pressed = newState === pressedState;
 
     console.debug("clock-panel doorbell state_changed", {
-      entityId,
+      entityId: eventEntityId,
       oldState,
       newState,
-      configuredPressedState: this._config.doorbellPressedState,
+      configuredPressedState: pressedState,
     });
 
     this._lastDoorbellSignature = "";
 
     if (pressed && oldState !== newState) {
-      this._showDoorbellCamera();
+      this._showDoorbellCamera("state_changed");
     }
+
+    this._updateDoorbellDebug();
   }
 
-  _showDoorbellCamera() {
+  _showDoorbellCamera(source = "unknown") {
+    if (!this._screen || !this._doorbellOverlay) return;
+
+    this._lastDoorbellTriggerSource = source;
     this._doorbellActive = true;
     this._screen.classList.add("is-doorbell-active");
     this._doorbellOverlay.setAttribute("aria-hidden", "false");
+    this._updateDoorbellDebug();
 
     if (this._doorbellTimer) {
       clearTimeout(this._doorbellTimer);
@@ -345,10 +439,11 @@ class ClockPanel extends HTMLElement {
     this._cameraStreamElement = null;
     this._doorbellMedia?.replaceChildren();
     if (this._doorbellCameraError) this._doorbellCameraError.textContent = "";
+    this._updateDoorbellDebug();
   }
 
   async _mountDoorbellStream() {
-    const cameraEntity = this._config.cameraEntity;
+    const cameraEntity = String(this._config.cameraEntity ?? "").trim();
     const cameraState = readEntity(this._hass, cameraEntity);
     const requestToken = ++this._doorbellRequestToken;
 
