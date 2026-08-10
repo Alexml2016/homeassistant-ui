@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   temperaturePrefix: "На улице",
   doorbellDisplaySeconds: 30,
   cameraFitMode: "cover",
+  doorbellDebug: true,
   digitWidth: "0.9fr",
   hourMinuteGap: "42px",
   segmentThickness: "clamp(16px, 3.1vmin, 34px)",
