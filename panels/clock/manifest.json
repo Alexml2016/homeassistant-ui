@@ -1,7 +1,7 @@
 {
   "name": "Home Assistant Clock Panel",
-  "version": "2.2.2",
-  "description": "Fullscreen seven-segment clock panel with emphasized armed mode, doorbell camera view, and on-screen doorbell diagnostics",
+  "version": "2.3.0",
+  "description": "Fullscreen seven-segment clock panel with armed mode, doorbell camera view, and courtyard gate open control",
   "entrypoint": "src/clock-panel.js",
   "home_assistant": {
     "panel_name": "clock-panel",
@@ -11,6 +11,7 @@
     "alarm": "binary_sensor.alarm_gateway_alarm_relay_state",
     "weather": "weather.home_assistant",
     "doorbell": "binary_sensor.doorbell_button",
-    "camera": "camera.doorbell"
+    "camera": "camera.doorbell",
+    "door_switch": "switch.ulitsa_courtyard_kalitka"
   }
 }
