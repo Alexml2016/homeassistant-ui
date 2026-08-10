@@ -1,10 +1,10 @@
-import { SegmentRenderer } from "./segments.js";
-import { AlarmState } from "./alarm.js";
-import { WeatherState } from "./weather.js";
-import { ClockController } from "./clock.js";
-import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js";
+import { SegmentRenderer } from "./segments.js?v=2.2.1";
+import { AlarmState } from "./alarm.js?v=2.2.1";
+import { WeatherState } from "./weather.js?v=2.2.1";
+import { ClockController } from "./clock.js?v=2.2.1";
+import { DEFAULT_CONFIG, mergeConfig, readEntity } from "./utils.js?v=2.2.1";
 
-const STYLE_URL = new URL("./clock.css", import.meta.url).href;
+const STYLE_URL = new URL("./clock.css?v=2.2.1", import.meta.url).href;
 
 class ClockPanel extends HTMLElement {
   constructor() {
@@ -24,6 +24,8 @@ class ClockPanel extends HTMLElement {
     this._doorbellRequestToken = 0;
     this._doorbellActive = false;
     this._cameraStreamElement = null;
+    this._stateChangedConnection = null;
+    this._unsubscribeStateChanged = null;
 
     this._renderShell();
   }
@@ -31,16 +33,22 @@ class ClockPanel extends HTMLElement {
   connectedCallback() {
     this._ensureClock();
     this._clock.start();
+    this._subscribeStateChanges();
     this._updateFromHass();
   }
 
   disconnectedCallback() {
     this._clock?.stop();
     this._hideDoorbellCamera();
+    this._teardownStateChanges();
   }
 
   set hass(hass) {
+    const connectionChanged = this._hass?.connection !== hass?.connection;
     this._hass = hass;
+    if (connectionChanged || !this._stateChangedConnection) {
+      this._subscribeStateChanges();
+    }
     this._updateFromHass();
   }
 
@@ -156,7 +164,11 @@ class ClockPanel extends HTMLElement {
     this._refreshButton = screen.querySelector(".refresh-button");
     this._error = screen.querySelector(".clock-error");
     this._alarmBanner.textContent = this._config.alarmText;
-    this._refreshButton.addEventListener("click", () => window.location.reload());
+    this._refreshButton.addEventListener("click", () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("_refresh", Date.now().toString());
+      window.location.replace(url.href);
+    });
   }
 
   _updateFromHass() {
@@ -220,7 +232,76 @@ class ClockPanel extends HTMLElement {
     if (signature === this._lastDoorbellSignature) return;
     this._lastDoorbellSignature = signature;
 
+    console.debug("clock-panel doorbell state", {
+      entityId,
+      rawState,
+      pressed,
+      configuredPressedState: this._config.doorbellPressedState,
+    });
+
     if (pressed) {
+      this._showDoorbellCamera();
+    }
+  }
+
+  _subscribeStateChanges() {
+    const connection = this._hass?.connection;
+    if (!this.isConnected || !connection || this._stateChangedConnection === connection) return;
+
+    this._teardownStateChanges();
+    this._stateChangedConnection = connection;
+
+    Promise.resolve(
+      connection.subscribeEvents((event) => this._handleStateChanged(event), "state_changed")
+    )
+      .then((unsubscribe) => {
+        if (this._stateChangedConnection !== connection) {
+          if (typeof unsubscribe === "function") unsubscribe();
+          return;
+        }
+        this._unsubscribeStateChanged = unsubscribe;
+      })
+      .catch((error) => {
+        if (this._stateChangedConnection === connection) {
+          this._stateChangedConnection = null;
+        }
+        console.warn("clock-panel state_changed subscription failed", error);
+      });
+  }
+
+  _teardownStateChanges() {
+    this._stateChangedConnection = null;
+    const unsubscribe = this._unsubscribeStateChanged;
+    this._unsubscribeStateChanged = null;
+
+    if (typeof unsubscribe === "function") {
+      try {
+        const result = unsubscribe();
+        if (result?.catch) result.catch(() => {});
+      } catch (_error) {
+        // Ignore cleanup errors while the Home Assistant connection is closing.
+      }
+    }
+  }
+
+  _handleStateChanged(event) {
+    const entityId = event?.data?.entity_id;
+    if (!entityId || entityId !== this._config.doorbellEntity) return;
+
+    const oldState = event?.data?.old_state?.state ?? "";
+    const newState = event?.data?.new_state?.state ?? "";
+    const pressed = newState === this._config.doorbellPressedState;
+
+    console.debug("clock-panel doorbell state_changed", {
+      entityId,
+      oldState,
+      newState,
+      configuredPressedState: this._config.doorbellPressedState,
+    });
+
+    this._lastDoorbellSignature = "";
+
+    if (pressed && oldState !== newState) {
       this._showDoorbellCamera();
     }
   }
