@@ -3,7 +3,7 @@ panel_custom:
     url_path: clock-screen
     sidebar_title: Часы
     sidebar_icon: mdi:clock-digital
-    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.2.1
+    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.2.2
     require_admin: false
     config:
       alarmEntity: binary_sensor.alarm_gateway_alarm_relay_state
@@ -14,6 +14,7 @@ panel_custom:
       doorbellPressedState: "on"
       doorbellDisplaySeconds: 30
       cameraFitMode: cover
+      doorbellDebug: true
       locale: ru-RU
       alarmText: ОХРАНА ВКЛЮЧЕНА
       temperaturePrefix: На улице
