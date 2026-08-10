@@ -21,6 +21,7 @@
 - режим охраны из бинарного сенсора;
 - при включённой охране надпись `ОХРАНА ВКЛЮЧЕНА` становится главным крупным элементом панели, а часы уменьшаются;
 - полноэкранный режим камеры при нажатии кнопки звонка;
+- кнопка открытия калитки непосредственно на экране звонка;
 - автоматический возврат к часам после настраиваемого времени;
 - адаптация под альбомную и портретную ориентацию;
 - учёт safe-area iPhone;
@@ -76,17 +77,20 @@ panel_custom:
     url_path: clock-screen
     sidebar_title: Часы
     sidebar_icon: mdi:clock-digital
-    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js
+    module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.3.0
     require_admin: false
     config:
       alarmEntity: binary_sensor.alarm_gateway_alarm_relay_state
       weatherEntity: weather.home_assistant
       doorbellEntity: binary_sensor.doorbell_button
       cameraEntity: camera.doorbell
+      doorSwitchEntity: switch.ulitsa_courtyard_kalitka
       armedState: "on"
       doorbellPressedState: "on"
       doorbellDisplaySeconds: 30
       cameraFitMode: cover
+      doorOpenButtonText: Открыть калитку
+      doorbellDebug: false
       locale: ru-RU
       alarmText: ОХРАНА ВКЛЮЧЕНА
       temperaturePrefix: На улице
@@ -99,7 +103,7 @@ panel_custom:
 
 ### 3. Настроить камеру звонка
 
-RTSP-поток не записывается непосредственно в исходный код панели. Добавьте камеру в Home Assistant через интеграцию **Generic Camera** и укажите RTSP-адрес камеры в поле **Stream Source URL**. Логин и пароль камеры лучше хранить в настройках Home Assistant, а не в публичном GitHub-репозитории.
+RTSP-поток не записывается непосредственно в исходный код панели. Добавьте камеру в Home Assistant через интеграцию **Generic Camera** и укажите RTSP-адрес камеры в поле **Stream Source URL**.
 
 После создания камеры проверьте её `entity_id` в **Инструменты разработчика → Состояния**. В примере используется:
 
@@ -120,6 +124,7 @@ binary_sensor.alarm_gateway_alarm_relay_state
 weather.home_assistant
 binary_sensor.doorbell_button
 camera.doorbell
+switch.ulitsa_courtyard_kalitka
 ```
 
 У погодной сущности должен быть атрибут:
@@ -163,9 +168,24 @@ http://homeassistant.local:8123/clock-screen
 
 1. открывает полноэкранное видео сущности `cameraEntity`;
 2. показывает метку `ЗВОНОК`;
-3. держит поток открытым в течение `doorbellDisplaySeconds`;
-4. автоматически возвращается к часам;
-5. при повторном нажатии звонка таймер запускается заново.
+3. показывает внизу кнопку `Открыть калитку`;
+4. держит поток открытым в течение `doorbellDisplaySeconds`;
+5. автоматически возвращается к часам;
+6. при повторном нажатии звонка таймер запускается заново.
+
+Кнопка открытия калитки вызывает сервис Home Assistant:
+
+```text
+switch.turn_on
+```
+
+для сущности, указанной в `doorSwitchEntity`. По умолчанию:
+
+```text
+switch.ulitsa_courtyard_kalitka
+```
+
+После нажатия кнопка кратковременно блокируется от повторного нажатия и показывает результат отправки команды.
 
 Панель сначала использует штатный компонент видеопотока Home Assistant. Если он недоступен, для совместимых браузеров используется HLS-поток через WebSocket API Home Assistant.
 
@@ -177,10 +197,13 @@ http://homeassistant.local:8123/clock-screen
 | `weatherEntity` | `weather.home_assistant` | погодная сущность |
 | `doorbellEntity` | `binary_sensor.doorbell_button` | бинарный сенсор кнопки звонка |
 | `cameraEntity` | `camera.doorbell` | камера, показываемая при звонке |
+| `doorSwitchEntity` | `switch.ulitsa_courtyard_kalitka` | реле открытия калитки |
+| `doorOpenButtonText` | `Открыть калитку` | текст кнопки открытия калитки |
 | `armedState` | `on` | состояние, означающее включённую охрану |
 | `doorbellPressedState` | `on` | состояние, означающее нажатие звонка |
 | `doorbellDisplaySeconds` | `30` | сколько секунд показывать камеру после звонка |
 | `cameraFitMode` | `cover` | заполнение экрана камерой: `cover`, `contain` или `fill` |
+| `doorbellDebug` | `false` | временная диагностика режима звонка |
 | `locale` | `ru-RU` | формат даты |
 | `alarmText` | `ОХРАНА ВКЛЮЧЕНА` | текст предупреждения |
 | `temperaturePrefix` | `На улице` | подпись температуры |
@@ -208,12 +231,15 @@ segmentThickness: 20px
 
 Приложение Home Assistant и Safari могут кэшировать JavaScript. После обновления файлов:
 
-1. полностью закройте приложение Home Assistant;
-2. откройте его снова;
-3. при необходимости измените URL модуля, добавив версию:
+1. выполните `git pull` в `/config/www/homeassistant-ui`;
+2. измените `module_url`, добавив актуальную версию;
+3. перезапустите Home Assistant;
+4. полностью закройте приложение Home Assistant на iPhone/iPad и откройте его снова.
+
+Для версии 2.3.0:
 
 ```yaml
-module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.2.0
+module_url: /local/homeassistant-ui/panels/clock/src/clock-panel.js?v=2.3.0
 ```
 
 ## Примечание о шрифте
