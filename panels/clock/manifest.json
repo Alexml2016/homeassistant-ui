@@ -1,7 +1,7 @@
 {
   "name": "Home Assistant Clock Panel",
-  "version": "2.2.0",
-  "description": "Fullscreen seven-segment clock panel with emphasized armed mode, configurable geometry, refresh control, and doorbell camera view",
+  "version": "2.2.1",
+  "description": "Fullscreen seven-segment clock panel with emphasized armed mode, configurable geometry, refresh control, and reliable doorbell camera triggering",
   "entrypoint": "src/clock-panel.js",
   "home_assistant": {
     "panel_name": "clock-panel",
