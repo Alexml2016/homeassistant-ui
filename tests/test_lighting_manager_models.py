@@ -81,6 +81,22 @@ class RuleTests(unittest.TestCase):
         self.assertFalse(evaluate_rule(rule, datetime(2026, 10, 11, 20, tzinfo=ZONE), ZONE, sun, {}).active)
         self.assertTrue(evaluate_rule(rule, datetime(2026, 10, 12, 20, tzinfo=ZONE), ZONE, sun, {}).active)
 
+    def test_manual_override_expires_at_next_event_or_timer(self):
+        now = datetime(2026, 10, 11, 21, tzinfo=ZONE)
+        before = ("rule_a",)
+        after = ("rule_b",)
+        until = (now + timedelta(minutes=5)).isoformat()
+        timed = {"mode": "timer", "until": until}
+        self.assertFalse(module.override_expired(timed, now, before, before))
+        self.assertTrue(module.override_expired(timed, now, before, after))
+        self.assertTrue(module.override_expired(
+            timed, now + timedelta(minutes=5), before, before
+        ))
+        event = {"mode": "event"}
+        self.assertFalse(module.override_expired(event, now, before, before))
+        self.assertTrue(module.override_expired(event, now, before, after))
+        self.assertFalse(module.override_expired(event, now, before, after, initialized=False))
+
     def test_reject_bad_rule(self):
         with self.assertRaises(ValueError):
             schedule(targets=["switch.ok", "sensor.temperature"])
