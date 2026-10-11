@@ -196,6 +196,25 @@ def evaluate_rule(
     return RuleResult("inactive", False)
 
 
+def override_expired(
+    override: Mapping[str, Any],
+    now: datetime,
+    previous_active: tuple[str, ...],
+    current_active: tuple[str, ...],
+    initialized: bool = True,
+) -> bool:
+    """Expire a manual hold at the next rule change or timer, whichever is first."""
+    if initialized and previous_active != current_active:
+        return True
+    if override.get("mode") != "timer":
+        return False
+    try:
+        until = datetime.fromisoformat(override["until"])
+        return until.tzinfo is None or now >= until
+    except (KeyError, ValueError, TypeError):
+        return True
+
+
 def desired_state(rule_states: Mapping[str, RuleResult], rules: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """OR across active rules; maximum specified brightness wins."""
     targets = {entity for rule in rules for entity in rule["targets"]}
