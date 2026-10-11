@@ -19,7 +19,7 @@ from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVALUATION_INTERVAL_SECONDS, STORAGE_KEY, STORAGE_VERSION
-from .models import RuleResult, desired_state, evaluate_rule, validate_rule
+from .models import RuleResult, desired_state, evaluate_rule, override_expired, validate_rule
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -221,24 +221,15 @@ class LightingEngine:
 
             dirty = False
             for entity, override in list(self.overrides.items()):
-                # Both kinds of manual hold expire at the next actual rule
-                # activation/deactivation; a timer may end the hold sooner.
-                transitioned = (
-                    self._initialized
-                    and self._previous_active.get(entity, ()) != fingerprint.get(entity, ())
-                )
-                if transitioned:
+                if override_expired(
+                    override,
+                    now,
+                    self._previous_active.get(entity, ()),
+                    fingerprint.get(entity, ()),
+                    self._initialized,
+                ):
                     del self.overrides[entity]
                     dirty = True
-                elif override["mode"] == "timer":
-                    try:
-                        until = datetime.fromisoformat(override["until"])
-                        if until.tzinfo is None or now >= until:
-                            del self.overrides[entity]
-                            dirty = True
-                    except (KeyError, ValueError, TypeError):
-                        del self.overrides[entity]
-                        dirty = True
 
             if fingerprint != self._previous_active or not self._initialized:
                 dirty = True
