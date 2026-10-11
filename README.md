@@ -1,77 +1,38 @@
 # Home Assistant UI
 
-Единый репозиторий пользовательских панелей и общих UI-ресурсов Home Assistant.
-Рабочая копия размещается в:
-
-```text
-/config/www/homeassistant-ui/
-```
-
-Home Assistant публикует её содержимое с префиксом:
-
-```text
-/local/homeassistant-ui/
-```
+Монорепозиторий панелей и пользовательских интеграций Home Assistant.
 
 ## Структура
 
-```text
-homeassistant-ui/
-├── panels/
-│   ├── clock/       # полноэкранная панель часов
-│   └── garage/      # панель ворот, калитки, света и движения
-├── shared/
-│   ├── css/         # общие темы и стили
-│   ├── js/          # общие JavaScript-модули
-│   └── svg/         # общая векторная графика
-└── assets/
-    ├── fonts/       # общие шрифты
-    └── images/      # общие изображения
-```
+- `www/homeassistant-ui/panels/` — Clock, Garage и будущие панели.
+- `www/homeassistant-ui/shared/` и `assets/` — общие ресурсы.
+- `custom_components/` — Python-интеграции Home Assistant.
+- `docs/` — документация проектов.
+- `scripts/deploy.sh` — безопасное развёртывание.
 
-Каждая панель должна оставаться самостоятельной: собственные исходники,
-документация, пример конфигурации и локальные изображения располагаются внутри
-`panels/<name>/`. В `shared/` следует помещать только ресурсы, реально используемые
-несколькими панелями.
+## Развёртывание
 
-## Clock Panel
-
-Исходный репозиторий `Alexml2016/clock-panel` импортирован в `panels/clock` с
-сохранением Git-истории.
-
-Основной модуль:
-
-```text
-/local/homeassistant-ui/panels/clock/src/clock-panel.js
-```
-
-Инструкции находятся в [panels/clock/README.md](panels/clock/README.md).
-
-## Garage Panel
-
-Панель находится в `panels/garage` и управляет дворовыми воротами, гаражными
-воротами, калиткой и освещением. В каждом блоке предусмотрена отдельная
-индикация движения.
-
-Ресурс версии `0.3.0`:
-
-```text
-/local/homeassistant-ui/panels/garage/src/garage-panel-0.3.0.js?v=0.3.0
-```
-
-Команды отправляются только нажатием на отдельные пиктограммы ворот, калитки или
-лампочки. Нажатие на фон блока ничего не выполняет.
-
-Инструкции и пример YAML находятся в
-[panels/garage/README.md](panels/garage/README.md).
-
-## Обновление
-
-Из каталога `/config/www/homeassistant-ui`:
+**Не клонируйте репозиторий непосредственно в /config или в /config/www/homeassistant-ui.**
+Рекомендуемый каталог клона: `/config/homeassistant-ui`.
 
 ```bash
-git pull --ff-only
+cd /config
+git clone https://github.com/Alexml2016/homeassistant-ui.git homeassistant-ui
+cd homeassistant-ui
+bash scripts/deploy.sh --dry-run
+bash scripts/deploy.sh
 ```
 
-После обновления JavaScript может потребоваться жёсткая перезагрузка страницы или
-смена параметра версии в URL ресурса, чтобы обойти кэш браузера.
+Скрипт копирует `www/` в `/config/www/` и `custom_components/` в `/config/custom_components/`. Он не удаляет посторонние файлы, но может заменить файлы с совпадающими именами. Перед первым развёртыванием сделайте резервную копию конфигурации.
+
+При обновлении: `git pull --ff-only && bash scripts/deploy.sh --dry-run && bash scripts/deploy.sh`.
+
+**Миграция со старой схемы:** если Git-клон уже находится в `/config/www/homeassistant-ui`, сначала переместите его в `/config/homeassistant-ui` при остановленном обновлении панелей. Затем переключите на новую ветку, выполните dry-run и deploy. Не запускайте `git pull` в старом каталоге после изменения структуры: файлы старых панелей могут исчезнуть до развёртывания.
+
+URL панелей сохраняются:
+- `/local/homeassistant-ui/panels/clock/src/clock-panel.js`
+- `/local/homeassistant-ui/panels/garage/src/garage-panel-0.3.0.js?v=0.3.0`
+
+Документация: [Clock](www/homeassistant-ui/panels/clock/README.md), [Garage](www/homeassistant-ui/panels/garage/README.md).
+
+После обновления Python-интеграций может потребоваться перезапуск Home Assistant. После обновления JavaScript — очистка кэша или изменение версии URL.
