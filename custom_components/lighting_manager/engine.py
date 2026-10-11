@@ -143,8 +143,10 @@ class LightingEngine:
             )
             if (new.state == STATE_ON) == expected_on and matched_brightness:
                 return
-        # A genuine user/external change takes priority until next rule transition.
-        self.overrides[entity_id] = {"mode": "event"}
+        # Keep an explicitly configured timer when the user changes the device.
+        # Otherwise the timer would be lost and the manual hold could last longer.
+        if self.overrides.get(entity_id, {}).get("mode") != "timer":
+            self.overrides[entity_id] = {"mode": "event"}
         self._schedule_save()
         _LOGGER.debug("Manual override detected for %s", entity_id)
 
@@ -219,11 +221,16 @@ class LightingEngine:
 
             dirty = False
             for entity, override in list(self.overrides.items()):
-                if override["mode"] == "event":
-                    if self._initialized and self._previous_active.get(entity, ()) != fingerprint.get(entity, ()):
-                        del self.overrides[entity]
-                        dirty = True
-                else:
+                # Both kinds of manual hold expire at the next actual rule
+                # activation/deactivation; a timer may end the hold sooner.
+                transitioned = (
+                    self._initialized
+                    and self._previous_active.get(entity, ()) != fingerprint.get(entity, ())
+                )
+                if transitioned:
+                    del self.overrides[entity]
+                    dirty = True
+                elif override["mode"] == "timer":
                     try:
                         until = datetime.fromisoformat(override["until"])
                         if until.tzinfo is None or now >= until:
