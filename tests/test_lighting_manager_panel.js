@@ -214,3 +214,90 @@ test("manual power command sets priority before the light service call", async (
   await panel._toggleEntity("light.yard");
   assert.deepEqual(calls, ["lighting_manager/set_override", "light.turn_off"]);
 });
+
+
+test("visual editor produces independent schedule and motion rules", () => {
+  const panel = new Panel();
+  panel._data = {
+    ...snapshot,
+    entities: [
+      { entity_id: "light.garden", name: "Сад", state: "off" },
+      { entity_id: "binary_sensor.entry", name: "Движение", state: "off" },
+    ],
+  };
+  panel._selectedEntity = "light.garden";
+  panel._renderEditor = () => {};
+  panel._message = () => {};
+
+  const initial = panel._newDraft("light.garden");
+  assert.equal(initial.targets[0], "light.garden");
+  assert.equal(initial.start.type, "sunset");
+  assert.equal(initial.end.type, "sunrise");
+  assert.equal(initial.end_day, "next");
+  assert.equal(initial.brightness_pct, 80);
+  panel._draft = initial;
+  panel._setMode("motion");
+  assert.equal(panel._draft.start.type, "motion");
+  assert.equal(panel._draft.start.entity_id, "binary_sensor.entry");
+  assert.equal(panel._draft.end.delay_seconds, 300);
+  assert.equal(panel._draft.active_period.end_day, "next");
+  panel._onEditorField({ dataset: { field: "motion.delay" }, value: "60" });
+  assert.equal(panel._draft.end.delay_seconds, 60);
+  panel._setMode("schedule");
+  assert.equal(panel._draft.start.type, "sunset");
+  assert.equal(panel._draft.end.type, "sunrise");
+  assert.equal(panel._draft.active_period, undefined);
+  panel._toggleDay(7);
+  assert.deepEqual(panel._draft.days, [1, 2, 3, 4, 5, 6]);
+});
+
+test("editor keeps independently selected device and existing rule", () => {
+  const panel = new Panel();
+  panel._message = () => {};
+  panel._renderData = () => {};
+  panel._renderEditor = () => {};
+  panel._data = {
+    ...snapshot,
+    rules: [
+      { id: "first", name: "Вечер", targets: ["light.garden"], start: { type: "time", time: "19:00" } },
+      { id: "second", name: "Ночь", targets: ["light.garden"], start: { type: "time", time: "23:00" } },
+    ],
+  };
+  panel._selectedEntity = "light.garden";
+  panel._selectedRuleId = "first";
+  panel._draft = { name: "Unsaved changes" };
+  panel._dirty = false;
+  panel._renderRuleList = () => {};
+  panel._pickRule("second");
+  assert.equal(panel._selectedRuleId, "second");
+  assert.equal(panel._draft.name, "Ночь");
+  assert.equal(panel._data.rules[1].name, "Ночь");
+  panel._newRule();
+  assert.equal(panel._selectedRuleId, null);
+  assert.equal(panel._draft.targets[0], "light.garden");
+});
+
+test("advanced JSON draft survives visual editor re-rendering", () => {
+  const panel = new Panel();
+  const containers = {
+    "editor-panel": {
+      innerHTML: "",
+      querySelector: () => ({ addEventListener: () => {} }),
+    },
+    "settings-title": { textContent: "" },
+  };
+  panel.shadowRoot.getElementById = (id) => containers[id];
+  panel._draft = {
+    id: "rule_one", name: "Свет", enabled: true, targets: ["light.garden"],
+    start: { type: "time", time: "19:00" },
+    end: { type: "duration", seconds: 300 },
+    days: [1, 2, 3, 4, 5, 6, 7],
+  };
+  panel._selectedEntity = "light.garden";
+  panel._selectedRuleId = "rule_one";
+  panel._showAdvanced = true;
+  panel._jsonDirty = true;
+  panel._advancedValue = '{"name":"Сохранённые несохранённые изменения"}';
+  panel._renderEditor();
+  assert.ok(containers["editor-panel"].innerHTML.includes(panel._advancedValue));
+});
