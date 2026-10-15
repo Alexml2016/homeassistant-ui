@@ -1,6 +1,6 @@
 # Lighting Manager
 
-Статус: **v0.6 — требования и архитектура; v0.1.0 — технический прототип** в ветке `feature/lighting-manager`.
+Статус: **v0.6 — требования и архитектура; v0.1.1 — технический прототип** в ветке `feature/lighting-manager`.
 
 Документы:
 - [Техническое задание v0.6](requirements.md).
@@ -24,7 +24,7 @@ bash scripts/deploy.sh
 В настройках Lovelace добавьте JavaScript-ресурс типа **JavaScript Module**:
 
 ```text
-/local/homeassistant-ui/panels/lighting-manager/lighting-manager.js?v=0.1.0
+/local/homeassistant-ui/panels/lighting-manager/lighting-manager.js?v=0.1.1
 ```
 
 На панели добавьте YAML-карточку:
@@ -44,6 +44,20 @@ bash scripts/deploy.sh
 ```
 
 Учтите: скрипт без `--delete` **не удаляет** файлы интеграции при откате. Если требуется убрать прототип полностью, сперва удалите запись интеграции в UI, затем вручную удалите `/config/custom_components/lighting_manager` и файл `/config/www/homeassistant-ui/panels/lighting-manager/lighting-manager.js` после резервного копирования.
+
+## Обновление карточки до v0.1.1
+
+```sh
+cd /config/homeassistant-ui
+git switch feature/lighting-manager
+git pull --ff-only
+bash scripts/deploy.sh --dry-run
+bash scripts/deploy.sh
+```
+
+Перезапустите Home Assistant Core: изменён Python-модуль интеграции, публикующий событие для обновления карточки. В **Настройки → Панели управления → Ресурсы** замените URL с `?v=0.1.0` на `?v=0.1.1`. Затем выполните `Ctrl+F5` в браузере Windows.
+
+В этой версии карточка подписана на событие изменения правил, обновляет статусы без перезагрузки страницы и сохраняет текст, введённый в JSON-редактор.
 
 ## Границы прототипа
 
