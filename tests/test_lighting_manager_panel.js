@@ -299,5 +299,6 @@ test("advanced JSON draft survives visual editor re-rendering", () => {
   panel._jsonDirty = true;
   panel._advancedValue = '{"name":"Сохранённые несохранённые изменения"}';
   panel._renderEditor();
-  assert.ok(containers["editor-panel"].innerHTML.includes(panel._advancedValue));
+  assert.ok(containers["editor-panel"].innerHTML.includes("&quot;name&quot;"));
+  assert.ok(containers["editor-panel"].innerHTML.includes("Сохранённые несохранённые изменения"));
 });
