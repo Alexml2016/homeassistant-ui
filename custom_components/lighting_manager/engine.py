@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timedelta
 import logging
 from time import monotonic
@@ -18,7 +19,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EVALUATION_INTERVAL_SECONDS, STORAGE_KEY, STORAGE_VERSION
+from .const import DOMAIN, EVALUATION_INTERVAL_SECONDS, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
 from .models import RuleResult, desired_state, evaluate_rule, override_expired, validate_rule
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class LightingEngine:
         self._recent_commands: dict[str, tuple[bool, int | None, float]] = {}
         self._target_entities: set[str] = set()
         self._sensor_entities: set[str] = set()
+        self._last_published_state: str | None = None
 
     async def async_start(self) -> None:
         """Load rules and subscribe to relevant entities and timer events."""
@@ -89,6 +91,27 @@ class LightingEngine:
     @callback
     def _schedule_save(self) -> None:
         self.store.async_delay_save(self._serialized, 1)
+
+    @callback
+    def _notify_ui_if_changed(self) -> None:
+        """Publish only when the rule/override snapshot actually changes.
+
+        The event contains no configuration or entity data. An authorized
+        administrator retrieves the latest snapshot over the WebSocket API.
+        """
+        payload = {
+            "rules": self.rules,
+            "rule_states": {
+                key: {"status": value.status, "active": value.active}
+                for key, value in self.rule_states.items()
+            },
+            "outputs": self.outputs,
+            "overrides": self.overrides,
+        }
+        signature = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        if signature != self._last_published_state:
+            self._last_published_state = signature
+            self.hass.bus.async_fire(EVENT_UPDATED)
 
     @callback
     def _tick(self, _now: datetime) -> None:
@@ -148,6 +171,7 @@ class LightingEngine:
         if self.overrides.get(entity_id, {}).get("mode") != "timer":
             self.overrides[entity_id] = {"mode": "event"}
         self._schedule_save()
+        self._notify_ui_if_changed()
         _LOGGER.debug("Manual override detected for %s", entity_id)
 
     async def async_save_rule(self, raw: dict[str, Any]) -> None:
@@ -188,6 +212,7 @@ class LightingEngine:
             expires = dt_util.utcnow() + timedelta(seconds=duration_seconds)
             self.overrides[entity_id] = {"mode": "timer", "until": expires.isoformat()}
         await self.store.async_save(self._serialized())
+        self._notify_ui_if_changed()
 
     async def async_clear_override(self, entity_id: str) -> None:
         """Restore automatic control immediately."""
@@ -241,6 +266,8 @@ class LightingEngine:
             for entity, target in self.outputs.items():
                 if entity not in self.overrides:
                     await self._apply_target(entity, target)
+
+            self._notify_ui_if_changed()
 
     async def _apply_target(self, entity: str, target: dict[str, Any]) -> None:
         state = self.hass.states.get(entity)
