@@ -11,6 +11,7 @@ class FakeElement {
   attachShadow() {
     this.shadowRoot = {
       getElementById: () => ({ textContent: "", className: "" }),
+      querySelectorAll: () => [],
     };
     return this.shadowRoot;
   }
@@ -139,4 +140,76 @@ test("reconnect establishes one new subscription", async () => {
   assert.equal(callbacks.length, 2);
   state.panel.isConnected = false;
   state.panel.disconnectedCallback();
+});
+
+test("new rule preserves sunset-to-sunrise and local device", () => {
+  const panel = new Panel();
+  panel._data = { entities: [{ entity_id: "light.test", name: "Свет" }] };
+  panel._supportsBrightness = () => true;
+  const rule = panel._newDraft("light.test");
+  assert.deepEqual(rule.targets, ["light.test"]);
+  assert.deepEqual(rule.start, { type: "sunset", offset_minutes: 0 });
+  assert.deepEqual(rule.end, { type: "sunrise", offset_minutes: 0 });
+  assert.equal(rule.end_day, "next");
+  assert.deepEqual(rule.days, [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(rule.brightness_pct, 80);
+});
+
+test("switch rules do not offer brightness controls", () => {
+  const panel = new Panel();
+  panel._data = { entities: [{ entity_id: "switch.porch", name: "Крыльцо" }] };
+  panel._supportsBrightness = () => false;
+  const rule = panel._newDraft("switch.porch");
+  assert.ok(!Object.hasOwn(rule, "brightness_pct"));
+  assert.deepEqual(rule.targets, ["switch.porch"]);
+});
+
+test("visual editor handles same-day offsets and preserves multiple targets", () => {
+  const panel = new Panel();
+  panel._draft = {
+    id: "shared", name: "Общий свет", enabled: true,
+    targets: ["light.a", "light.b"],
+    days: [1, 2, 3, 4, 5, 6, 7],
+    start: { type: "sunset", offset_minutes: 0 },
+    end: { type: "time", time: "23:00" },
+    end_day: "same",
+  };
+  panel._onEditorField({
+    dataset: { field: "start.offset_minutes" },
+    value: "10",
+    checked: false,
+  });
+  assert.equal(panel._draft.start.offset_minutes, 10);
+  assert.deepEqual(panel._draft.targets, ["light.a", "light.b"]);
+  assert.deepEqual(panel._draft.end, { type: "time", time: "23:00" });
+  assert.equal(panel._dirty, true);
+});
+
+test("manual power command sets priority before the light service call", async () => {
+  const panel = new Panel();
+  panel.isConnected = true;
+  panel._data = {
+    entities: [{ entity_id: "light.yard", name: "Двор" }],
+    outputs: { "light.yard": { on: true } },
+    rules: [{ id: "existing", targets: ["light.yard"] }],
+    rule_states: {}, overrides: {},
+  };
+  const calls = [];
+  panel._entityState = () => "on";
+  panel._renderData = () => {};
+  panel._message = () => {};
+  panel._hass = {
+    connection: {
+      sendMessagePromise: async (msg) => {
+        calls.push(msg.type);
+        return panel._data;
+      },
+    },
+    callService: async (domain, service, data) => {
+      calls.push(domain + "." + service);
+      assert.deepEqual(data, { entity_id: "light.yard" });
+    },
+  };
+  await panel._toggleEntity("light.yard");
+  assert.deepEqual(calls, ["lighting_manager/set_override", "light.turn_off"]);
 });
