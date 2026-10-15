@@ -378,6 +378,7 @@ class LightingManagerPanel extends HTMLElement {
     this.shadowRoot.getElementById("editor-panel").addEventListener("input", (event) => {
       const target = event.target;
       if (target.id === "json-editor") {
+        this._advancedValue = target.value;
         this._jsonDirty = true;
         this._dirty = true;
         return;
