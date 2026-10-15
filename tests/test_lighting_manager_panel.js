@@ -12,6 +12,7 @@ class FakeElement {
     this.shadowRoot = {
       getElementById: () => ({ textContent: "", className: "" }),
       querySelectorAll: () => [],
+      querySelectorAll: () => [],
     };
     return this.shadowRoot;
   }
