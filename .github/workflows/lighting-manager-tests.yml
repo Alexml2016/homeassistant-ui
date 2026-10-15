@@ -23,6 +23,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Check Lighting Manager JavaScript syntax
         run: node --check www/homeassistant-ui/panels/lighting-manager/lighting-manager.js
+      - name: Regression tests for live panel updates
+        run: node --test tests/test_lighting_manager_panel.js
       - name: Validate JSON manifests and translation files
         run: |
           python - <<'PY'
