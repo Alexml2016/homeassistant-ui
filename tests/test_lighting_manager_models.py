@@ -182,6 +182,52 @@ class RuleTests(unittest.TestCase):
             rule, datetime(2026, 10, 12, 8, tzinfo=ZONE), ZONE, sun,
             {"binary_sensor.garage_open": {"state": "on"}}, again).active)
 
+    def test_close_state_or_combined_with_both_off_and_timeout(self):
+        rule = gate_rule(end={
+            "type": "all_off", "or_on_entity_ids": ["binary_sensor.garage_closed"]
+        })
+        now = datetime(2026, 10, 11, 21, tzinfo=ZONE)
+        session = module.start_event_session(
+            rule, "binary_sensor.fence_open", "off", "on", now, ZONE, sun)
+        self.assertIsNotNone(session)
+        open_states = {
+            "binary_sensor.garage_open": {"state": "off"},
+            "binary_sensor.fence_open": {"state": "on"},
+            "binary_sensor.garage_closed": {"state": "off"},
+        }
+        self.assertTrue(evaluate_rule(rule, now, ZONE, sun, open_states, session).active)
+        # Closure signal has OR precedence even while the fence is open.
+        close_states = {**open_states, "binary_sensor.garage_closed": {"state": "on"}}
+        self.assertFalse(evaluate_rule(rule, now, ZONE, sun, close_states, session).active)
+        # A close sensor already on at the moment of opening also ends the rule.
+        self.assertFalse(evaluate_rule(rule, now, ZONE, sun, close_states, session).active)
+        both_off = {**open_states, "binary_sensor.fence_open": {"state": "off"}}
+        self.assertFalse(evaluate_rule(rule, now, ZONE, sun, both_off, session).active)
+        self.assertFalse(evaluate_rule(
+            rule, now + timedelta(minutes=10), ZONE, sun, open_states, session).active)
+        # An unavailable close sensor must not itself terminate an open session.
+        missing_close = {**open_states, "binary_sensor.garage_closed": {"state": "unavailable"}}
+        self.assertTrue(evaluate_rule(rule, now, ZONE, sun, missing_close, session).active)
+
+    def test_close_state_validation_and_legacy_compatibility(self):
+        now = datetime(2026, 10, 11, 21, tzinfo=ZONE)
+        old_rule = gate_rule()
+        self.assertEqual(old_rule["end"]["or_on_entity_ids"], [])
+        valid = gate_rule(end={"type": "all_off",
+                               "or_on_entity_ids": ["binary_sensor.garage_closed"]})
+        self.assertEqual(valid["end"]["or_on_entity_ids"], ["binary_sensor.garage_closed"])
+        for invalid in (
+            "binary_sensor.garage_closed",
+            ["sensor.outside"],
+            ["binary_sensor.garage_closed", "binary_sensor.garage_closed"],
+            ["binary_sensor.fence_open"],
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                gate_rule(end={"type": "all_off", "or_on_entity_ids": invalid})
+        with self.assertRaises(ValueError):
+            schedule(end={"type": "time", "time": "23:00",
+                          "or_on_entity_ids": ["binary_sensor.garage_closed"]})
+
     def test_or_event_validation(self):
         base = gate_rule()
         cases = [
