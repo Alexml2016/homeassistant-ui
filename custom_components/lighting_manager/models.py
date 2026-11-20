@@ -106,6 +106,18 @@ def validate_rule(raw: dict[str, Any]) -> dict[str, Any]:
                        for entity in entity_ids)
                 or len(set(entity_ids)) != len(entity_ids)):
             raise ValueError("start.entity_ids must contain unique binary_sensor.* entity IDs")
+        # Optional OR condition: a separate binary sensor currently reads "on".
+        # Older all_off rules without this field keep their original behaviour.
+        close_entities = end.get("or_on_entity_ids", [])
+        if (not isinstance(close_entities, list) or len(close_entities) > 64
+                or any(not isinstance(entity, str) or not SENSOR_RE.fullmatch(entity)
+                       for entity in close_entities)
+                or len(set(close_entities)) != len(close_entities)
+                or bool(set(entity_ids) & set(close_entities))):
+            raise ValueError(
+                "end.or_on_entity_ids must be unique, disjoint binary_sensor.* IDs"
+            )
+        end["or_on_entity_ids"] = close_entities
         maximum = rule.get("max_duration_seconds")
         if type(maximum) is not int or not 1 <= maximum <= 86400:
             raise ValueError("max_duration_seconds must be between 1 and 86400")
@@ -122,6 +134,8 @@ def validate_rule(raw: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("active_period.end_day must be same or next")
         period.setdefault("end_day", "same")
     else:
+        if "or_on_entity_ids" in end:
+            raise ValueError("end.or_on_entity_ids is only valid for all_off rules")
         if "active_period" in rule:
             raise ValueError("active_period is only valid for motion or any_on rules")
         if rule.get("end_day", "same") not in ("same", "next"):
@@ -215,9 +229,13 @@ def evaluate_rule(
     if kind == "any_on":
         if current_window(rule, now, zone, sun, period=True) is None or event_session is None:
             return RuleResult("inactive", False)
-        # Both sensors must explicitly report off; unknown does not mean closed.
-        if all(sensors.get(entity, {}).get("state") == "off"
-               for entity in rule["start"]["entity_ids"]):
+        # End conditions combine with OR: both open sensors are off, or a
+        # separately configured closed-state sensor reads on, or the timeout.
+        # Unknown/unavailable states must not be mistaken for an explicit signal.
+        if (all(sensors.get(entity, {}).get("state") == "off"
+                for entity in rule["start"]["entity_ids"])
+                or any(sensors.get(entity, {}).get("state") == "on"
+                       for entity in rule["end"].get("or_on_entity_ids", []))):
             return RuleResult("inactive", False)
         try:
             until = datetime.fromisoformat(event_session["until"])
