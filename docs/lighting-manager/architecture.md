@@ -74,6 +74,44 @@ tests/test_lighting_manager_models.py
 }
 ```
 
+### Освещение ворот и калитки по ИЛИ
+
+```json
+{
+  "id": "courtyard_gate_fence_night",
+  "name": "Двор — освещение при открытии гаража или калитки",
+  "enabled": true,
+  "targets": [
+    "light.ulitsa_courtyard_osveshchenie_kalitki",
+    "light.ulitsa_courtyard_light_left",
+    "light.ulitsa_sonoff_mini_r2_courtyard_svet_na_stolbakh"
+  ],
+  "days": [1, 2, 3, 4, 5, 6, 7],
+  "start": {
+    "type": "any_on",
+    "entity_ids": [
+      "binary_sensor.garazh_garage_courtyard_gates_v2_garage_open_state",
+      "binary_sensor.garazh_garage_courtyard_gates_v2_fence_open_state"
+    ]
+  },
+  "end": {"type": "all_off"},
+  "max_duration_seconds": 600,
+  "active_period": {
+    "start": {"type": "sunset"},
+    "end": {"type": "sunrise"},
+    "end_day": "next"
+  },
+  "transition_seconds": 0
+}
+```
+
+- Включение: реальный переход `off → on` **любого** из двух датчиков после заката, до восхода.
+- Выключение: когда **оба** датчика `off` или спустя 600 секунд после **последнего** перехода `off → on` одного из них.
+- Если к концу тайм-аута ворота/калитка остаются открыты, свет не включится снова до нового события открытия.
+- При переходе через полночь интервал не прерывается. После перезапуска HA уже запущенный таймер продолжается по сохранённому абсолютному сроку. Датчики, оставшиеся `on` к моменту запуска HA или заката, сами по себе новое открытие не создают.
+- При наличии другого активного правила на один из светильников применяется обычный арбитраж OR, поэтому такой светильник остаётся включённым.
+- Этот тип правила следует редактировать через расширенный JSON-редактор панели v0.2.0. Визуальный мастер для `any_on/all_off` ещё не реализован.
+
 ## Поток исполнения
 
 1. Загрузка из `Store("lighting_manager.data")` и проверка каждого правила.
