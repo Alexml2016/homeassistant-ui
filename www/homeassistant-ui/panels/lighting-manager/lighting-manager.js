@@ -768,9 +768,16 @@ class LightingManagerPanel extends HTMLElement {
     title.textContent = (this._selectedRuleId ? "Редактирование" : "Новое правило") +
       (this._dirty ? " · не сохранено" : "");
     const isMotion = rule.start.type === "motion";
+    const isEvent = rule.start.type === "any_on";
     const source = isMotion ? rule.active_period : rule;
     const sensors = (this._data?.entities || []).filter((item) => item.entity_id.startsWith("binary_sensor."));
-    const startEnd = !isMotion
+    const startEnd = isEvent
+      ? '<div class="form-row full"><p class="note">Событийное правило: включение по ИЛИ (' +
+        (rule.start.entity_ids || []).map(lmEscape).join(", ") +
+        '), выключение при off у всех датчиков или по тайм-ауту ' +
+        lmEscape(rule.max_duration_seconds) +
+        ' секунд. Условия редактируются в JSON ниже.</p></div>'
+      : !isMotion
       ? this._pointFields("Включение", "start", source.start) +
         this._pointFields("Выключение", "end", source.end, true)
       : '<div class="form-row full"><label>Датчик движения</label><select class="select" data-field="motion.sensor">' +
@@ -782,7 +789,7 @@ class LightingManagerPanel extends HTMLElement {
         '<div class="form-row full"><label class="f-label">Период работы датчика</label></div>' +
         this._pointFields("Начало периода", "start", source.start) +
         this._pointFields("Конец периода", "end", source.end);
-    const nextDay = source.end.type !== "duration"
+    const nextDay = !isEvent && source.end.type !== "duration"
       ? '<div class="form-row full"><label>Когда заканчивается интервал</label><select class="select" data-field="end_day">' +
         lmOption("same", "В тот же день", source.end_day || "same") +
         lmOption("next", "На следующий день", source.end_day || "same") + '</select></div>'
@@ -810,10 +817,12 @@ class LightingManagerPanel extends HTMLElement {
       '<div class="form">',
       '<div class="form-row full"><label for="lm-rule-name">Название правила</label>',
       '<input class="field" id="lm-rule-name" data-field="name" maxlength="120" value="' + lmEscape(rule.name) + '"></div>',
-      '<div class="form-row full"><label>Режим управления</label><div class="segment">',
-      '<button type="button" data-mode="schedule" aria-pressed="' + !isMotion + '">По расписанию</button>',
-      '<button type="button" data-mode="motion" aria-pressed="' + isMotion + '">По движению</button>',
-      '</div></div>',
+      (isEvent
+        ? '<p class="note">Режим: несколько датчиков (OR); редактирование условий через JSON.</p>'
+        : '<div class="form-row full"><label>Режим управления</label><div class="segment">' +
+          '<button type="button" data-mode="schedule" aria-pressed="' + !isMotion + '">По расписанию</button>' +
+          '<button type="button" data-mode="motion" aria-pressed="' + isMotion + '">По движению</button>' +
+          '</div></div>'),
       startEnd,
       nextDay,
       '<div class="form-row full"><label>Дни недели</label><div class="weekdays">' + days + '</div></div>',
@@ -824,7 +833,7 @@ class LightingManagerPanel extends HTMLElement {
       (rule.targets.length > 1 ?
         '<p class="note">Это общее правило для ' + rule.targets.length +
         ' устройств. Изменения затронут все его цели.</p>' : ''),
-      '<details class="advanced" id="advanced" ' + (this._showAdvanced ? "open" : "") + '>',
+      '<details class="advanced" id="advanced" ' + (isEvent || this._showAdvanced ? "open" : "") + '>',
       '<summary>Расширенные настройки (JSON)</summary>',
       '<p class="note">Для сложных правил. Изменения JSON при сохранении имеют приоритет над полями формы.</p>',
       '<textarea id="json-editor" spellcheck="false">' +
