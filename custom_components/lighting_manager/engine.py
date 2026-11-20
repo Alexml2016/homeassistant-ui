@@ -20,7 +20,8 @@ from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVALUATION_INTERVAL_SECONDS, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
-from .models import RuleResult, desired_state, evaluate_rule, override_expired, validate_rule
+from .models import (RuleResult, desired_state, evaluate_rule,
+                     override_expired, start_event_session, validate_rule)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class LightingEngine:
         self._recent_commands: dict[str, tuple[bool, int | None, float]] = {}
         self._target_entities: set[str] = set()
         self._sensor_entities: set[str] = set()
+        self._event_sensor_rules: dict[str, list[dict[str, Any]]] = {}
+        self._event_sessions: dict[str, dict[str, str]] = {}
         self._last_published_state: str | None = None
 
     async def async_start(self) -> None:
@@ -64,6 +67,10 @@ class LightingEngine:
             if isinstance(rule_ids, list)
         }
         self._initialized = bool(data.get("initialized"))
+        self._event_sessions = {
+            rule_id: session for rule_id, session in data.get("event_sessions", {}).items()
+            if isinstance(session, dict) and isinstance(session.get("until"), str)
+        }
         self._rebind_entities()
         self._unsub_tick = async_track_time_interval(
             self.hass, self._tick, timedelta(seconds=EVALUATION_INTERVAL_SECONDS)
@@ -86,6 +93,7 @@ class LightingEngine:
             "overrides": self.overrides,
             "previous_active": {key: list(value) for key, value in self._previous_active.items()},
             "initialized": self._initialized,
+            "event_sessions": self._event_sessions,
         }
 
     @callback
@@ -123,10 +131,16 @@ class LightingEngine:
             self._unsub_entities()
             self._unsub_entities = None
         self._target_entities = {target for rule in self.rules for target in rule["targets"]}
-        self._sensor_entities = {
-            rule["start"]["entity_id"] for rule in self.rules
-            if rule["start"]["type"] == "motion"
-        }
+        self._sensor_entities = set()
+        self._event_sensor_rules = {}
+        for rule in self.rules:
+            kind = rule["start"]["type"]
+            if kind == "motion":
+                self._sensor_entities.add(rule["start"]["entity_id"])
+            elif kind == "any_on":
+                for entity in rule["start"]["entity_ids"]:
+                    self._sensor_entities.add(entity)
+                    self._event_sensor_rules.setdefault(entity, []).append(rule)
         watched = self._target_entities | self._sensor_entities
         if watched:
             self._unsub_entities = async_track_state_change_event(
@@ -139,6 +153,18 @@ class LightingEngine:
         old = event.data.get("old_state")
         new = event.data.get("new_state")
         if entity_id in self._sensor_entities:
+            # For event rules, only an off -> on transition after sunset arms
+            # the deadline. A persistent on level never restarts the timer.
+            if old is not None and new is not None and entity_id in self._event_sensor_rules:
+                now = dt_util.now()
+                zone = ZoneInfo(self.hass.config.time_zone)
+                for rule in self._event_sensor_rules[entity_id]:
+                    session = start_event_session(
+                        rule, entity_id, old.state, new.state, now, zone, self._sun
+                    )
+                    if session is not None:
+                        self._event_sessions[rule["id"]] = session
+                        self._schedule_save()
             self.hass.async_create_task(self.async_refresh())
         if entity_id not in self._target_entities or old is None or new is None:
             return
@@ -184,6 +210,8 @@ class LightingEngine:
                     break
             else:
                 self.rules.append(rule)
+            # Editing a rule invalidates its old event deadline.
+            self._event_sessions.pop(rule["id"], None)
             await self.store.async_save(self._serialized())
             self._rebind_entities()
         await self.async_refresh()
@@ -195,6 +223,7 @@ class LightingEngine:
             self.rules = [rule for rule in self.rules if rule["id"] != rule_id]
             if len(self.rules) == old_count:
                 return False
+            self._event_sessions.pop(rule_id, None)
             await self.store.async_save(self._serialized())
             self._rebind_entities()
         await self.async_refresh()
@@ -234,17 +263,34 @@ class LightingEngine:
                 if state is not None:
                     sensor_states[entity] = {"state": state.state, "last_changed": state.last_changed}
 
-            self.rule_states = {
-                rule["id"]: evaluate_rule(rule, now, zone, self._sun, sensor_states)
-                for rule in self.rules
-            }
+            # Expired or closed event sessions are removed from persistent
+            # storage. A permanently open sensor cannot re-arm one at a tick.
+            sessions_changed = False
+            valid_ids = {rule["id"] for rule in self.rules
+                         if rule["start"]["type"] == "any_on"}
+            for rule_id in list(self._event_sessions):
+                if rule_id not in valid_ids:
+                    del self._event_sessions[rule_id]
+                    sessions_changed = True
+
+            self.rule_states = {}
+            for rule in self.rules:
+                rule_id = rule["id"]
+                session = self._event_sessions.get(rule_id)
+                result = evaluate_rule(
+                    rule, now, zone, self._sun, sensor_states, event_session=session
+                )
+                self.rule_states[rule_id] = result
+                if rule["start"]["type"] == "any_on" and session is not None and not result.active:
+                    del self._event_sessions[rule_id]
+                    sessions_changed = True
             self.outputs = desired_state(self.rule_states, self.rules)
             fingerprint = {
                 entity: tuple(sorted(output["active_rules"]))
                 for entity, output in self.outputs.items()
             }
 
-            dirty = False
+            dirty = sessions_changed
             for entity, override in list(self.overrides.items()):
                 if override_expired(
                     override,
