@@ -1,5 +1,5 @@
 /**
- * Lighting Manager v0.2 — visual Home Assistant dashboard.
+ * Lighting Manager v0.2.1 — visual Home Assistant dashboard.
  * Actual HA entities and Lighting Manager rules; no demo data.
  * No third-party browser dependencies.
  */
