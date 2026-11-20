@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 import re
 from typing import Any, Callable, Mapping
 
@@ -90,16 +90,32 @@ def validate_rule(raw: dict[str, Any]) -> dict[str, Any]:
 
     start = rule.get("start")
     end = rule.get("end")
-    _point(start, {"time", "sunrise", "sunset", "motion"}, "start")
-    _point(end, {"time", "sunrise", "sunset", "duration", "no_motion"}, "end")
+    _point(start, {"time", "sunrise", "sunset", "motion", "any_on"}, "start")
+    _point(end, {"time", "sunrise", "sunset", "duration", "no_motion", "all_off"}, "end")
     is_motion = start["type"] == "motion"
+    is_event = start["type"] == "any_on"
     if is_motion != (end["type"] == "no_motion"):
         raise ValueError("motion start requires no_motion end (and vice versa)")
+    if is_event != (end["type"] == "all_off"):
+        raise ValueError("any_on start requires all_off end (and vice versa)")
 
-    if is_motion:
+    if is_event:
+        entity_ids = start.get("entity_ids")
+        if (not isinstance(entity_ids, list) or not 1 <= len(entity_ids) <= 64
+                or any(not isinstance(entity, str) or not SENSOR_RE.fullmatch(entity)
+                       for entity in entity_ids)
+                or len(set(entity_ids)) != len(entity_ids)):
+            raise ValueError("start.entity_ids must contain unique binary_sensor.* entity IDs")
+        maximum = rule.get("max_duration_seconds")
+        if type(maximum) is not int or not 1 <= maximum <= 86400:
+            raise ValueError("max_duration_seconds must be between 1 and 86400")
+    elif "max_duration_seconds" in rule:
+        raise ValueError("max_duration_seconds is only valid for any_on rules")
+
+    if is_motion or is_event:
         period = rule.get("active_period")
         if not isinstance(period, dict):
-            raise ValueError("motion rules require active_period")
+            raise ValueError("motion and any_on rules require active_period")
         _point(period.get("start"), {"time", "sunrise", "sunset"}, "active_period.start")
         _point(period.get("end"), {"time", "sunrise", "sunset"}, "active_period.end")
         if period.get("end_day", "same") not in ("same", "next"):
@@ -107,7 +123,7 @@ def validate_rule(raw: dict[str, Any]) -> dict[str, Any]:
         period.setdefault("end_day", "same")
     else:
         if "active_period" in rule:
-            raise ValueError("active_period is only valid for motion rules")
+            raise ValueError("active_period is only valid for motion or any_on rules")
         if rule.get("end_day", "same") not in ("same", "next"):
             raise ValueError("end_day must be same or next")
         rule.setdefault("end_day", "same")
@@ -169,14 +185,49 @@ def current_window(
     return None
 
 
+def start_event_session(
+    rule: Mapping[str, Any], entity_id: str, old_state: str | None,
+    new_state: str | None, now: datetime, zone: tzinfo, sun: SunProvider,
+) -> dict[str, str] | None:
+    """Arm or restart an OR event rule only on a real off -> on transition.
+
+    A rule already open when HA starts or sunset occurs does not self-trigger.
+    The UTC deadline survives daylight-saving changes and HA restarts.
+    """
+    if (rule["start"]["type"] != "any_on" or not rule["enabled"]
+            or entity_id not in rule["start"]["entity_ids"]
+            or old_state != "off" or new_state != "on"
+            or current_window(rule, now, zone, sun, period=True) is None):
+        return None
+    deadline = now.astimezone(timezone.utc) + timedelta(seconds=rule["max_duration_seconds"])
+    return {"until": deadline.isoformat()}
+
+
 def evaluate_rule(
     rule: Mapping[str, Any], now: datetime, zone: tzinfo,
     sun: SunProvider, sensors: Mapping[str, Mapping[str, Any]],
+    event_session: Mapping[str, Any] | None = None,
 ) -> RuleResult:
     """Evaluate daily and motion rules from immutable input state."""
     if not rule["enabled"]:
         return RuleResult("disabled", False)
-    if rule["start"]["type"] != "motion":
+    kind = rule["start"]["type"]
+    if kind == "any_on":
+        if current_window(rule, now, zone, sun, period=True) is None or event_session is None:
+            return RuleResult("inactive", False)
+        # Both sensors must explicitly report off; unknown does not mean closed.
+        if all(sensors.get(entity, {}).get("state") == "off"
+               for entity in rule["start"]["entity_ids"]):
+            return RuleResult("inactive", False)
+        try:
+            until = datetime.fromisoformat(event_session["until"])
+            if until.tzinfo is None or now >= until:
+                return RuleResult("inactive", False)
+        except (KeyError, ValueError, TypeError):
+            return RuleResult("inactive", False)
+        return RuleResult("active", True)
+
+    if kind != "motion":
         return (RuleResult("active", True) if current_window(rule, now, zone, sun)
                 else RuleResult("inactive", False))
 
