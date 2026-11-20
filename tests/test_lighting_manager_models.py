@@ -32,6 +32,23 @@ def schedule(**kwargs):
     })
 
 
+def gate_rule(**kwargs):
+    rule = {
+        "id": "gate_or_fence", "name": "Gates", "enabled": True,
+        "targets": ["light.courtyard", "light.gate", "light.posts"],
+        "days": [1, 2, 3, 4, 5, 6, 7],
+        "start": {"type": "any_on", "entity_ids": [
+            "binary_sensor.garage_open", "binary_sensor.fence_open",
+        ]},
+        "end": {"type": "all_off"}, "max_duration_seconds": 600,
+        "active_period": {
+            "start": {"type": "sunset"}, "end": {"type": "sunrise"}, "end_day": "next",
+        },
+    }
+    rule.update(kwargs)
+    return validate_rule(rule)
+
+
 class RuleTests(unittest.TestCase):
     def test_evening(self):
         rule = schedule()
@@ -104,6 +121,85 @@ class RuleTests(unittest.TestCase):
             schedule(brightness_pct=101)
         with self.assertRaises(ValueError):
             schedule(end={"type": "no_motion", "delay_seconds": 10})
+
+
+    def test_or_event_arms_only_on_opening_after_sunset(self):
+        rule = gate_rule()
+        after_sunset = datetime(2026, 10, 11, 21, tzinfo=ZONE)
+        before_sunset = datetime(2026, 10, 11, 19, tzinfo=ZONE)
+        self.assertIsNone(module.start_event_session(
+            rule, "binary_sensor.garage_open", "off", "on", before_sunset, ZONE, sun))
+        self.assertIsNone(module.start_event_session(
+            rule, "binary_sensor.garage_open", None, "on", after_sunset, ZONE, sun))
+        self.assertIsNone(module.start_event_session(
+            rule, "binary_sensor.garage_open", "on", "on", after_sunset, ZONE, sun))
+        self.assertIsNone(module.start_event_session(
+            rule, "binary_sensor.other", "off", "on", after_sunset, ZONE, sun))
+        session = module.start_event_session(
+            rule, "binary_sensor.garage_open", "off", "on", after_sunset, ZONE, sun)
+        self.assertIsNotNone(session)
+        self.assertEqual(datetime.fromisoformat(session["until"]) - after_sunset,
+                         timedelta(minutes=10))
+
+    def test_or_event_ends_when_both_off_or_timeout(self):
+        rule = gate_rule()
+        now = datetime(2026, 10, 11, 21, tzinfo=ZONE)
+        session = module.start_event_session(
+            rule, "binary_sensor.garage_open", "off", "on", now, ZONE, sun)
+        one_open = {
+            "binary_sensor.garage_open": {"state": "off"},
+            "binary_sensor.fence_open": {"state": "on"},
+        }
+        both_off = {key: {"state": "off"} for key in one_open}
+        both_open = {key: {"state": "on"} for key in one_open}
+        self.assertTrue(evaluate_rule(rule, now, ZONE, sun, one_open, session).active)
+        self.assertTrue(evaluate_rule(rule, now, ZONE, sun, both_open, session).active)
+        self.assertFalse(evaluate_rule(rule, now, ZONE, sun, both_off, session).active)
+        self.assertFalse(evaluate_rule(rule, now, ZONE, sun, both_open, None).active)
+        self.assertFalse(evaluate_rule(
+            rule, now + timedelta(minutes=10), ZONE, sun, one_open, session).active)
+        # A stale open sensor must not retrigger without another off -> on event.
+        self.assertIsNone(module.start_event_session(
+            rule, "binary_sensor.fence_open", "on", "on",
+            now + timedelta(minutes=11), ZONE, sun))
+
+    def test_or_event_second_opening_restarts_timer_and_crosses_midnight(self):
+        rule = gate_rule()
+        now = datetime(2026, 10, 11, 23, 57, tzinfo=ZONE)
+        first = module.start_event_session(
+            rule, "binary_sensor.garage_open", "off", "on", now, ZONE, sun)
+        again = module.start_event_session(
+            rule, "binary_sensor.fence_open", "off", "on",
+            now + timedelta(minutes=5), ZONE, sun)
+        self.assertEqual(datetime.fromisoformat(again["until"]) -
+                         datetime.fromisoformat(first["until"]), timedelta(minutes=5))
+        after_midnight = now + timedelta(minutes=6)
+        self.assertTrue(evaluate_rule(rule, after_midnight, ZONE, sun, {
+            "binary_sensor.garage_open": {"state": "on"},
+            "binary_sensor.fence_open": {"state": "on"},
+        }, again).active)
+        self.assertFalse(evaluate_rule(
+            rule, datetime(2026, 10, 12, 8, tzinfo=ZONE), ZONE, sun,
+            {"binary_sensor.garage_open": {"state": "on"}}, again).active)
+
+    def test_or_event_validation(self):
+        base = gate_rule()
+        cases = [
+            {"start": {"type": "any_on", "entity_ids": []}},
+            {"start": {"type": "any_on", "entity_ids": [
+                "binary_sensor.garage_open", "binary_sensor.garage_open"]}},
+            {"start": {"type": "any_on", "entity_ids": ["sensor.invalid"]}},
+            {"end": {"type": "no_motion"}},
+            {"max_duration_seconds": 0},
+            {"max_duration_seconds": 86401},
+            {"max_duration_seconds": True},
+            {"active_period": {"start": {"type": "sunset"}, "end": {"type": "motion"}}},
+        ]
+        for change in cases:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                validate_rule({**base, **change})
+        with self.assertRaises(ValueError):
+            schedule(end={"type": "all_off"})
 
 
 if __name__ == "__main__":
