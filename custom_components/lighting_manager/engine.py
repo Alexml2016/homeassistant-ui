@@ -141,6 +141,9 @@ class LightingEngine:
                 for entity in rule["start"]["entity_ids"]:
                     self._sensor_entities.add(entity)
                     self._event_sensor_rules.setdefault(entity, []).append(rule)
+                # Subscribe to explicit closure sensors, too, so the lights
+                # turn off immediately when one reports on.
+                self._sensor_entities.update(rule["end"].get("or_on_entity_ids", []))
         watched = self._target_entities | self._sensor_entities
         if watched:
             self._unsub_entities = async_track_state_change_event(
