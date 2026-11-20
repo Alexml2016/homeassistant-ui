@@ -1,5 +1,5 @@
 /**
- * Lighting Manager v0.2.1 — visual Home Assistant dashboard.
+ * Lighting Manager v0.2.2 — visual Home Assistant dashboard.
  * Actual HA entities and Lighting Manager rules; no demo data.
  * No third-party browser dependencies.
  */
@@ -774,8 +774,12 @@ class LightingManagerPanel extends HTMLElement {
     const startEnd = isEvent
       ? '<div class="form-row full"><p class="note">Событийное правило: включение по ИЛИ (' +
         (rule.start.entity_ids || []).map(lmEscape).join(", ") +
-        '), выключение при off у всех датчиков или по тайм-ауту ' +
-        lmEscape(rule.max_duration_seconds) +
+        '), выключение: оба датчика off' +
+        ((rule.end?.or_on_entity_ids || []).length
+          ? ' ИЛИ один из датчиков закрытия on (' +
+            rule.end.or_on_entity_ids.map(lmEscape).join(", ") + ')'
+          : '') +
+        ' ИЛИ тайм-аут ' + lmEscape(rule.max_duration_seconds) +
         ' секунд. Условия редактируются в JSON ниже.</p></div>'
       : !isMotion
       ? this._pointFields("Включение", "start", source.start) +
