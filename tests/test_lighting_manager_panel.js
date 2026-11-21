@@ -302,3 +302,50 @@ test("advanced JSON draft survives visual editor re-rendering", () => {
   assert.ok(containers["editor-panel"].innerHTML.includes("&quot;name&quot;"));
   assert.ok(containers["editor-panel"].innerHTML.includes("Сохранённые несохранённые изменения"));
 });
+
+test("panel view expands a centered card to the whole tablet width", () => {
+  const panel = new Panel();
+  const styleValues = new Map();
+  const card = { style: {
+    setProperty: (name, value) => styleValues.set(name, value),
+    removeProperty: (name) => styleValues.delete(name),
+  } };
+  panel.shadowRoot.querySelector = () => card;
+  panel._panelView = { getBoundingClientRect: () => ({ left: 0, width: 960 }) };
+  panel.getBoundingClientRect = () => ({ left: 183, width: 624 });
+  panel._updatePanelWidth();
+  assert.equal(styleValues.get("width"), "960px");
+  assert.equal(styleValues.get("margin-left"), "-183px");
+});
+
+test("panel view does not change the phone layout or an already wide card", () => {
+  const panel = new Panel();
+  const styleValues = new Map([["width", "960px"], ["margin-left", "-183px"]]);
+  const card = { style: {
+    setProperty: (name, value) => styleValues.set(name, value),
+    removeProperty: (name) => styleValues.delete(name),
+  } };
+  panel.shadowRoot.querySelector = () => card;
+  panel._panelView = { getBoundingClientRect: () => ({ left: 0, width: 390 }) };
+  panel.getBoundingClientRect = () => ({ left: 15, width: 360 });
+  panel._updatePanelWidth();
+  assert.equal(styleValues.has("width"), false);
+  assert.equal(styleValues.has("margin-left"), false);
+
+  panel._panelView = { getBoundingClientRect: () => ({ left: 0, width: 960 }) };
+  panel.getBoundingClientRect = () => ({ left: 0, width: 960 });
+  panel._updatePanelWidth();
+  assert.equal(styleValues.has("width"), false);
+  assert.equal(styleValues.has("margin-left"), false);
+});
+
+test("container queries measure the card rather than its constrained host", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const file = path.resolve(__dirname, "../www/homeassistant-ui/panels/lighting-manager/lighting-manager.js");
+  const src = fs.readFileSync(file, "utf8");
+  assert.match(src, /ha-card\.lm[^\n]*container-type:inline-size/);
+  assert.doesNotMatch(src, /:host[^\n]*container-type:inline-size/);
+  assert.match(src, /@container \(min-width:700px\)/);
+});
+
