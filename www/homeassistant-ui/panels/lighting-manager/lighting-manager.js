@@ -1,5 +1,5 @@
 /**
- * Lighting Manager v0.2.3 — responsive Home Assistant dashboard.
+ * Lighting Manager v0.2.4 — responsive full-width Home Assistant dashboard.
  * Actual HA entities and Lighting Manager rules; no demo data.
  * No third-party browser dependencies.
  */
@@ -40,11 +40,21 @@ function lmClone(object) {
   return JSON.parse(JSON.stringify(object));
 }
 
+// Find the real Home Assistant Panel view through its shadow DOM.
+function lmFindPanelView(element) {
+  let node = element;
+  while (node) {
+    if (node.localName === "hui-panel-view") return node;
+    node = node.parentElement || node.getRootNode?.()?.host || null;
+  }
+  return null;
+}
+
 const LM_STYLE = [
-  ":host { display:block; width:100%; min-width:0; color:var(--primary-text-color); font-family:inherit; container-type:inline-size; }",
+  ":host { display:block; width:100%; min-width:0; color:var(--primary-text-color); font-family:inherit; }",
   "ha-card.lm { --lm-accent:#e5ad3d; --lm-border:var(--divider-color,#d7d9dc); padding:0;",
   "  color:var(--primary-text-color); background:var(--card-background-color,var(--ha-card-background,#fff));",
-  "  overflow:hidden; border-radius:18px; width:100%; min-width:0; }",
+  "  overflow:hidden; border-radius:18px; width:100%; min-width:0; box-sizing:border-box; container-type:inline-size; }",
   ".lm * { box-sizing:border-box; }",
   ".head { padding:24px 26px 18px; display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap;",
   "  background:linear-gradient(120deg,rgba(229,173,61,.13),transparent 65%); }",
@@ -181,6 +191,9 @@ class LightingManagerPanel extends HTMLElement {
     this._managedOnly = false;
     this._manualSeconds = "";
     this._initializedEditor = false;
+    this._panelView = null;
+    this._panelResizeObserver = null;
+    this._panelResizeFallback = null;
   }
 
   setConfig(config) { this._config = config || {}; }
@@ -200,12 +213,63 @@ class LightingManagerPanel extends HTMLElement {
 
   connectedCallback() {
     this._render();
+    this._setupPanelWidth();
     this._startLiveUpdates();
   }
 
   disconnectedCallback() {
+    this._stopPanelWidth();
     this._stopLiveUpdates();
     this._loaded = false;
+  }
+
+  _setupPanelWidth() {
+    this._stopPanelWidth();
+    this._panelView = lmFindPanelView(this);
+    if (!this._panelView) return;
+    const update = () => this._updatePanelWidth();
+    if (typeof ResizeObserver !== "undefined") {
+      this._panelResizeObserver = new ResizeObserver(update);
+      this._panelResizeObserver.observe(this._panelView);
+    } else if (typeof window !== "undefined") {
+      this._panelResizeFallback = update;
+      window.addEventListener("resize", update);
+    }
+    update();
+    // HA may attach the card before completing the initial view layout.
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        if (this.isConnected) this._updatePanelWidth();
+      });
+    }
+  }
+
+  _stopPanelWidth() {
+    this._panelResizeObserver?.disconnect();
+    this._panelResizeObserver = null;
+    if (this._panelResizeFallback && typeof window !== "undefined") {
+      window.removeEventListener("resize", this._panelResizeFallback);
+    }
+    this._panelResizeFallback = null;
+    this._panelView = null;
+  }
+
+  _updatePanelWidth() {
+    const card = this.shadowRoot?.querySelector?.("ha-card.lm");
+    if (!card || !this._panelView || typeof this.getBoundingClientRect !== "function") return;
+    const view = this._panelView.getBoundingClientRect();
+    const host = this.getBoundingClientRect();
+    // Keep the familiar mobile layout. A Panel card that already spans its
+    // view requires no special treatment.
+    if (view.width < 700 || host.width + 24 >= view.width) {
+      card.style.removeProperty("width");
+      card.style.removeProperty("margin-left");
+      return;
+    }
+    // Expand only the internal card. The outer host stays at its original
+    // size, avoiding further centering changes by Home Assistant's wrapper.
+    card.style.setProperty("width", view.width + "px");
+    card.style.setProperty("margin-left", (view.left - host.left) + "px");
   }
 
   _startLiveUpdates() {
@@ -318,7 +382,7 @@ class LightingManagerPanel extends HTMLElement {
       '  <div><div class="eyebrow">HOME ASSISTANT · ОСВЕЩЕНИЕ</div>',
       '   <h2>Управление освещением</h2>',
       '   <p class="subtitle muted">Автоматизация, сценарии и ручное управление</p></div>',
-      '  <div class="head-actions"><span class="badge">Lighting Manager 0.2</span>',
+      '  <div class="head-actions"><span class="badge">Lighting Manager 0.2.4</span>',
       '   <button class="btn" id="reload" type="button"><ha-icon icon="mdi:refresh"></ha-icon> Обновить</button></div>',
       ' </header>',
       ' <div class="stats" id="stats"></div>',
