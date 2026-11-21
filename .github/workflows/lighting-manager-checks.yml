@@ -1,0 +1,40 @@
+name: Lighting Manager checks
+
+on:
+  push:
+    branches:
+      - feature/lighting-manager
+    paths:
+      - "custom_components/lighting_manager/**"
+      - "tests/test_lighting_manager_models.py"
+      - "tests/test_lighting_manager_panel.js"
+      - "www/homeassistant-ui/panels/lighting-manager/**"
+      - ".github/workflows/lighting-manager-checks.yml"
+  pull_request:
+    paths:
+      - "custom_components/lighting_manager/**"
+      - "tests/test_lighting_manager_models.py"
+      - "tests/test_lighting_manager_panel.js"
+      - "www/homeassistant-ui/panels/lighting-manager/**"
+      - ".github/workflows/lighting-manager-checks.yml"
+  workflow_dispatch:
+
+jobs:
+  lighting-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run Python unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Lighting Manager sources
+        run: python -m compileall -q custom_components/lighting_manager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test Lighting Manager panel
+        run: |
+          node --check www/homeassistant-ui/panels/lighting-manager/lighting-manager.js
+          node --test tests/test_lighting_manager_panel.js

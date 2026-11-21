@@ -1,0 +1,36 @@
+name: Lighting Manager checks
+
+on:
+  push:
+    branches: [feature/lighting-manager]
+  pull_request:
+    paths:
+      - 'custom_components/lighting_manager/**'
+      - 'tests/test_lighting_manager_models.py'
+      - '.github/workflows/lighting-manager-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile Python source
+        run: python -m compileall -q custom_components/lighting_manager
+      - name: Rule model unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Check Lighting Manager JavaScript syntax
+        run: node --check www/homeassistant-ui/panels/lighting-manager/lighting-manager.js
+      - name: Regression tests for live panel updates
+        run: node --test tests/test_lighting_manager_panel.js
+      - name: Validate JSON manifests and translation files
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for file in Path('custom_components/lighting_manager').rglob('*.json'):
+              json.loads(file.read_text(encoding='utf-8'))
+              print('valid', file)
+          PY

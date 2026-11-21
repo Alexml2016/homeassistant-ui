@@ -1,0 +1,14 @@
+{
+  "title": "Lighting Manager",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lighting Manager",
+        "description": "Install the local lighting automation engine. Rules are configured in the Lighting Manager panel."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Lighting Manager is already configured."
+    }
+  }
+}
