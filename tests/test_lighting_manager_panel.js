@@ -315,7 +315,7 @@ test("panel view expands a centered card to the whole tablet width", () => {
   panel.getBoundingClientRect = () => ({ left: 183, width: 624 });
   panel._updatePanelWidth();
   assert.equal(styleValues.get("width"), "960px");
-  assert.equal(styleValues.get("margin-left"), "-183px");
+  assert.equal(styleValues.get("transform"), "translateX(-183px)");
 });
 
 test("panel view does not change the phone layout or an already wide card", () => {
