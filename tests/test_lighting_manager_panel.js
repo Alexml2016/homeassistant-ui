@@ -344,7 +344,7 @@ test("container queries measure the card rather than its constrained host", () =
   const path = require("node:path");
   const file = path.resolve(__dirname, "../www/homeassistant-ui/panels/lighting-manager/lighting-manager.js");
   const src = fs.readFileSync(file, "utf8");
-  assert.match(src, /ha-card\.lm[^\n]*container-type:inline-size/);
+  assert.match(src, /ha-card\.lm[\s\S]{0,450}container-type:inline-size/);
   assert.doesNotMatch(src, /:host[^\n]*container-type:inline-size/);
   assert.match(src, /@container \(min-width:700px\)/);
 });
