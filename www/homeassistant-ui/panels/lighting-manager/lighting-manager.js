@@ -1,5 +1,5 @@
 /**
- * Lighting Manager v0.2.2 — visual Home Assistant dashboard.
+ * Lighting Manager v0.2.3 — responsive Home Assistant dashboard.
  * Actual HA entities and Lighting Manager rules; no demo data.
  * No third-party browser dependencies.
  */
@@ -41,10 +41,10 @@ function lmClone(object) {
 }
 
 const LM_STYLE = [
-  ":host { display:block; color:var(--primary-text-color); font-family:inherit; }",
+  ":host { display:block; width:100%; min-width:0; color:var(--primary-text-color); font-family:inherit; container-type:inline-size; }",
   "ha-card.lm { --lm-accent:#e5ad3d; --lm-border:var(--divider-color,#d7d9dc); padding:0;",
   "  color:var(--primary-text-color); background:var(--card-background-color,var(--ha-card-background,#fff));",
-  "  overflow:hidden; border-radius:18px; }",
+  "  overflow:hidden; border-radius:18px; width:100%; min-width:0; }",
   ".lm * { box-sizing:border-box; }",
   ".head { padding:24px 26px 18px; display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap;",
   "  background:linear-gradient(120deg,rgba(229,173,61,.13),transparent 65%); }",
@@ -61,7 +61,7 @@ const LM_STYLE = [
   "  border-radius:13px; background:var(--secondary-background-color,rgba(128,128,128,.05)); }",
   ".stat strong { font-size:20px; line-height:1.2; }",
   ".stat small { color:var(--secondary-text-color); font-size:11px; }",
-  ".layout { display:grid; grid-template-columns:minmax(260px,.85fr) minmax(320px,1.3fr); border-top:1px solid var(--lm-border); }",
+  ".layout { display:grid; grid-template-columns:minmax(260px,.85fr) minmax(0,1.3fr); border-top:1px solid var(--lm-border); min-width:0; }",
   ".left { padding:23px; border-right:1px solid var(--lm-border); min-width:0; }",
   ".right { padding:23px 26px 26px; min-width:0; }",
   ".section-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:14px; }",
@@ -105,7 +105,7 @@ const LM_STYLE = [
   ".badge.warning { color:var(--error-color,#c33); background:rgba(196,49,49,.09); }",
   ".line { border:0; border-top:1px solid var(--lm-border); margin:18px 0; }",
   ".device-heading { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:18px; }",
-  ".device-heading h3 { font-size:20px; }",
+  ".device-heading h3 { font-size:20px; overflow-wrap:anywhere; }",
   ".rule-list { display:grid; gap:8px; margin-bottom:13px; }",
   ".ruleitem { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1px solid var(--lm-border);",
   "  color:inherit; background:var(--card-background-color,#fff); text-align:left; min-width:0; }",
@@ -143,10 +143,18 @@ const LM_STYLE = [
   ".msg.error { color:var(--error-color,#c33); }",
   ".msg.ok { color:#208350; }",
   ".foot { padding:13px 25px; font-size:11px; color:var(--secondary-text-color); border-top:1px solid var(--lm-border); }",
-  "@media (max-width:800px) { .layout { grid-template-columns:1fr; } .left { border-right:0; border-bottom:1px solid var(--lm-border); }",
-  " .devices { max-height:320px; } .right,.left { padding:18px; } .stats { padding:0 18px 18px; } .head { padding:20px 18px 16px; } }",
-  "@media (max-width:480px) { .form { grid-template-columns:1fr; } .weekdays { gap:3px; } .day { padding:8px 0; }",
-  " .form-actions .btn { flex:1; } }",
+  "/* Container queries follow actual card width, not the iPad viewport. */",
+  "@container (min-width:1100px) { .layout { grid-template-columns:minmax(330px,34%) minmax(0,1fr); }",
+  " .devices { max-height:calc(100vh - 340px); min-height:420px; } .left { padding:26px; } .right { padding:26px 32px 32px; }",
+  " .device-name { font-size:14px; } .device-detail { font-size:12px; } .form { column-gap:20px; } }",
+  "@container (min-width:700px) and (max-width:1099px) { .layout { grid-template-columns:minmax(250px,38%) minmax(0,1fr); }",
+  " .left { padding:18px; } .right { padding:18px; } .device-heading { flex-wrap:wrap; } }",
+  "@container (max-width:699px) { .layout { grid-template-columns:minmax(0,1fr); }",
+  " .left { border-right:0; border-bottom:1px solid var(--lm-border); } .devices { max-height:320px; }",
+  " .right,.left { padding:18px; } .stats { padding:0 18px 18px; } .head { padding:20px 18px 16px; }",
+  " .device-heading { flex-wrap:wrap; } }",
+  "@container (max-width:480px) { .form { grid-template-columns:minmax(0,1fr); } .weekdays { gap:3px; }",
+  " .day { padding:8px 0; } .form-actions .btn { flex:1; } }",
 ].join("\n");
 
 class LightingManagerPanel extends HTMLElement {
