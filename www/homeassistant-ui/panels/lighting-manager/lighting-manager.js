@@ -1,5 +1,5 @@
 /**
- * Lighting Manager v0.2.4 — responsive full-width Home Assistant dashboard.
+ * Lighting Manager v0.2.5 — robust full-width Home Assistant panel layout.
  * Actual HA entities and Lighting Manager rules; no demo data.
  * No third-party browser dependencies.
  */
@@ -41,13 +41,42 @@ function lmClone(object) {
 }
 
 // Find the real Home Assistant Panel view through its shadow DOM.
-function lmFindPanelView(element) {
+// Walk through Home Assistant's nested shadow roots. The custom card may
+// be wrapped by a hui-card or hosted directly inside the Panel view.
+function lmPanelContext(element) {
   let node = element;
-  while (node) {
-    if (node.localName === "hui-panel-view") return node;
-    node = node.parentElement || node.getRootNode?.()?.host || null;
+  let panelView = null;
+  let viewContainer = null;
+  let panelCard = false;
+  let hops = 0;
+  while (node && hops++ < 40) {
+    if (node.localName === "hui-panel-view") panelView = node;
+    if (node.localName === "hui-view-container") viewContainer = node;
+    if (node.localName === "hui-card" && node.layout === "panel") panelCard = true;
+    const parent = node.parentElement;
+    node = parent || node.getRootNode?.()?.host || null;
   }
-  return null;
+  return { panelView, viewContainer,
+    isPanel: Boolean(panelView || panelCard || element.layout === "panel" ||
+                     element.isPanel || element._config?.full_width === true) };
+}
+
+// The fallback is used if Home Assistant gives the card and its view the same
+// narrow centered width. A Panel view occupies the area to the right of the
+// sidebar. For a centered card, its center reveals the sidebar inset without
+// hard-coding Home Assistant's sidebar width.
+function lmPanelGeometry(host, container, viewportWidth) {
+  if (!Number.isFinite(host?.left) || !Number.isFinite(host?.width) ||
+      !Number.isFinite(viewportWidth) || viewportWidth < 720) return null;
+  if (host.width >= viewportWidth - 36) return null;
+  if (container && Number.isFinite(container.left) && Number.isFinite(container.width) &&
+      container.width > host.width + 80 && container.width >= viewportWidth * .70) {
+    return { left: container.left, width: container.width };
+  }
+  if (host.width >= viewportWidth * .86) return null;
+  const inferredLeft = Math.max(0, Math.min(viewportWidth * .3,
+    2 * host.left + host.width - viewportWidth));
+  return { left: inferredLeft, width: viewportWidth - inferredLeft };
 }
 
 const LM_STYLE = [
@@ -192,6 +221,7 @@ class LightingManagerPanel extends HTMLElement {
     this._manualSeconds = "";
     this._initializedEditor = false;
     this._panelView = null;
+    this._viewContainer = null;
     this._panelResizeObserver = null;
     this._panelResizeFallback = null;
   }
@@ -225,18 +255,21 @@ class LightingManagerPanel extends HTMLElement {
 
   _setupPanelWidth() {
     this._stopPanelWidth();
-    this._panelView = lmFindPanelView(this);
-    if (!this._panelView) return;
+    const context = lmPanelContext(this);
+    this._panelView = context.panelView;
+    this._viewContainer = context.viewContainer;
+    if (!context.isPanel) return;
     const update = () => this._updatePanelWidth();
     if (typeof ResizeObserver !== "undefined") {
       this._panelResizeObserver = new ResizeObserver(update);
-      this._panelResizeObserver.observe(this._panelView);
-    } else if (typeof window !== "undefined") {
+      this._panelResizeObserver.observe(this._viewContainer || this._panelView || this);
+    }
+    if (typeof window !== "undefined") {
       this._panelResizeFallback = update;
       window.addEventListener("resize", update);
+      window.visualViewport?.addEventListener?.("resize", update);
     }
     update();
-    // HA may attach the card before completing the initial view layout.
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(() => {
         if (this.isConnected) this._updatePanelWidth();
@@ -249,27 +282,38 @@ class LightingManagerPanel extends HTMLElement {
     this._panelResizeObserver = null;
     if (this._panelResizeFallback && typeof window !== "undefined") {
       window.removeEventListener("resize", this._panelResizeFallback);
+      window.visualViewport?.removeEventListener?.("resize", this._panelResizeFallback);
     }
     this._panelResizeFallback = null;
     this._panelView = null;
+    this._viewContainer = null;
   }
 
   _updatePanelWidth() {
     const card = this.shadowRoot?.querySelector?.("ha-card.lm");
-    if (!card || !this._panelView || typeof this.getBoundingClientRect !== "function") return;
-    const view = this._panelView.getBoundingClientRect();
-    const host = this.getBoundingClientRect();
-    // Keep the familiar mobile layout. A Panel card that already spans its
-    // view requires no special treatment.
-    if (view.width < 700 || host.width + 24 >= view.width) {
+    if (!card || typeof this.getBoundingClientRect !== "function") return;
+    const context = lmPanelContext(this);
+    const panel = this._panelView || context.panelView;
+    const view = this._viewContainer || context.viewContainer || panel;
+    if (!context.isPanel && !this._panelView) return;
+    const hostRect = this.getBoundingClientRect();
+    const candidateRect = view?.getBoundingClientRect?.() || null;
+    const width = (typeof window !== "undefined" &&
+                   (window.visualViewport?.width || window.innerWidth)) ||
+                   candidateRect?.width || hostRect.width;
+    const geometry = lmPanelGeometry(hostRect, candidateRect, width);
+    if (!geometry || geometry.width <= hostRect.width + 40) {
       card.style.removeProperty("width");
       card.style.removeProperty("margin-left");
+      card.style.removeProperty("transform");
       return;
     }
-    // Expand only the internal card. The outer host stays at its original
-    // size, avoiding further centering changes by Home Assistant's wrapper.
-    card.style.setProperty("width", view.width + "px");
-    card.style.setProperty("margin-left", (view.left - host.left) + "px");
+    // Transform avoids causing an intrinsic-width reflow in the centered
+    // parent. Container queries then use the expanded ha-card width.
+    card.style.removeProperty("margin-left");
+    card.style.setProperty("width", Math.round(geometry.width) + "px");
+    card.style.setProperty("transform",
+      "translateX(" + Math.round(geometry.left - hostRect.left) + "px)");
   }
 
   _startLiveUpdates() {
@@ -382,7 +426,7 @@ class LightingManagerPanel extends HTMLElement {
       '  <div><div class="eyebrow">HOME ASSISTANT · ОСВЕЩЕНИЕ</div>',
       '   <h2>Управление освещением</h2>',
       '   <p class="subtitle muted">Автоматизация, сценарии и ручное управление</p></div>',
-      '  <div class="head-actions"><span class="badge">Lighting Manager 0.2.4</span>',
+      '  <div class="head-actions"><span class="badge">Lighting Manager 0.2.5</span>',
       '   <button class="btn" id="reload" type="button"><ha-icon icon="mdi:refresh"></ha-icon> Обновить</button></div>',
       ' </header>',
       ' <div class="stats" id="stats"></div>',
