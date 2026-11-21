@@ -349,3 +349,65 @@ test("container queries measure the card rather than its constrained host", () =
   assert.match(src, /@container \(min-width:700px\)/);
 });
 
+
+test("iPad Panel fallback recovers full width even without a discoverable view wrapper", () => {
+  const panel = new Panel();
+  panel.layout = "panel";
+  const styles = new Map();
+  panel.shadowRoot.querySelector = () => ({
+    style: {
+      setProperty: (name, value) => styles.set(name, value),
+      removeProperty: (name) => styles.delete(name),
+    },
+  });
+  panel.getBoundingClientRect = () => ({ left: 460, width: 613 });
+  const originalWidth = window.innerWidth;
+  window.innerWidth = 1465;
+  try {
+    panel._updatePanelWidth();
+    assert.equal(styles.get("width"), "1397px");
+    assert.equal(styles.get("transform"), "translateX(-392px)");
+  } finally {
+    window.innerWidth = originalWidth;
+  }
+});
+
+test("Panel fallback leaves phone widths unchanged", () => {
+  const panel = new Panel();
+  panel.layout = "panel";
+  const styles = new Map();
+  panel.shadowRoot.querySelector = () => ({
+    style: {
+      setProperty: (name, value) => styles.set(name, value),
+      removeProperty: (name) => styles.delete(name),
+    },
+  });
+  panel.getBoundingClientRect = () => ({ left: 10, width: 370 });
+  const originalWidth = window.innerWidth;
+  window.innerWidth = 390;
+  try {
+    panel._updatePanelWidth();
+    assert.equal(styles.has("width"), false);
+    assert.equal(styles.has("transform"), false);
+  } finally {
+    window.innerWidth = originalWidth;
+  }
+});
+
+test("non-Panel cards do not escape their dashboard container", () => {
+  const panel = new Panel();
+  const styles = new Map();
+  panel.shadowRoot.querySelector = () => ({
+    style: { setProperty: (name, value) => styles.set(name, value),
+             removeProperty: (name) => styles.delete(name) },
+  });
+  panel.getBoundingClientRect = () => ({ left: 460, width: 613 });
+  const originalWidth = window.innerWidth;
+  window.innerWidth = 1465;
+  try {
+    panel._updatePanelWidth();
+    assert.equal(styles.has("width"), false);
+  } finally {
+    window.innerWidth = originalWidth;
+  }
+});
